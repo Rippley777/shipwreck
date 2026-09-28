@@ -6,3 +6,9 @@ node_modules
 artifacts
 test-results
 playwright-report
+
+# GitHub App keys must stay outside source and build contexts.
+*.pem
+*.key
+
+__pycache__

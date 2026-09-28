@@ -6,3 +6,10 @@ node_modules/
 *.tsbuildinfo
 test-results/
 playwright-report/
+
+# GitHub App keys must stay outside source and build contexts.
+*.pem
+*.key
+
+# Python deployment tooling
+__pycache__/

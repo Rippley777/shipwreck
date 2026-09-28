@@ -36,6 +36,7 @@ import { useState, useEffect, useCallback } from "react";
 
 import type { CheckResult } from "@/lib/scanner/types";
 import type { Project, StoredScan } from "@/lib/server/workspace";
+import { GitHubAppSettings } from "./github-app-settings";
 import { Overview } from "./overview";
 import { Logo, Status, PageTitle } from "./ui";
 import { Findings, HistoryList } from "./reports";
@@ -47,6 +48,8 @@ type Workspace = {
   projects: Project[];
   github: string | null;
   oauthConfigured: boolean;
+  githubApp: { login: string } | null;
+  githubAppConfigured: boolean;
 };
 export function Dashboard() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -84,13 +87,31 @@ export function Dashboard() {
           const reason = new URLSearchParams(window.location.search).get(
             "error",
           );
-          if (reason)
+          if (reason) {
+            const messages: Record<string, string> = {
+              "github-not-configured":
+                "Configure GitHub OAuth environment variables to connect your account.",
+              "create-account-first":
+                "Create an account before connecting GitHub.",
+              "github-app-not-configured":
+                "Configure the GitHub App credentials before connecting private repositories.",
+              "github-app-sign-in":
+                "Sign in to a personal account before connecting the GitHub App.",
+              "github-app-approval-pending":
+                "GitHub App installation is awaiting organization administrator approval. Connect again once approved.",
+              "github-app-connection-failed":
+                "GitHub App connection failed. Use the GitHub account linked to Shipwreck, confirm installation access, and try again.",
+            };
             setError(
-              reason === "github-not-configured"
-                ? "Configure GitHub OAuth environment variables to connect your account."
-                : reason === "create-account-first"
-                  ? "Create an account before connecting GitHub."
-                  : "GitHub connection failed. Please try again.",
+              messages[reason] || "GitHub connection failed. Please try again.",
+            );
+          }
+          if (
+            new URLSearchParams(window.location.search).get("connected") ===
+            "github-app"
+          )
+            setNotice(
+              "GitHub App connected. Browse your selected repositories to start a private Hull Check.",
             );
         }
       } catch (e) {
@@ -816,9 +837,9 @@ export function Dashboard() {
                             : "Connect GitHub for repository selection and OAuth sign-in."}
                         </p>
                         <small>
-                          Public repository access uses minimal OAuth scopes.
-                          Private repository access requires a future GitHub App
-                          integration.
+                          This OAuth connection supports sign-in and public
+                          repository browsing. Connect the GitHub App below for
+                          private repository scans.
                         </small>
                       </div>
                       <button
@@ -838,6 +859,19 @@ export function Dashboard() {
                         <ArrowUpRight size={15} />
                       </button>
                     </div>
+                    <hr />
+                    <GitHubAppSettings
+                      configured={workspace.githubAppConfigured}
+                      connection={workspace.githubApp}
+                      demo={workspace.user.demo}
+                      onSignup={() => setModal("signup")}
+                      onChanged={async () => {
+                        await load();
+                        setNotice(
+                          "GitHub App disconnected. Private scans require reconnecting.",
+                        );
+                      }}
+                    />
                     <hr />
                     <h3>Data & retention</h3>
                     <p className="muted">
@@ -918,7 +952,11 @@ export function Dashboard() {
             </button>
             {modal === "project" && (
               <NewProject
-                githubConnected={!!workspace?.github}
+                githubConnected={!!(workspace?.github || workspace?.githubApp)}
+                githubAppAvailable={
+                  !!workspace?.githubAppConfigured && !workspace?.user.demo
+                }
+                githubAppConnected={!!workspace?.githubApp}
                 onCreated={async (id) => {
                   const data = await load();
                   setModal(null);
@@ -960,7 +998,7 @@ export function Dashboard() {
                     [
                       "01",
                       "Connect a project",
-                      "Enter a public GitHub repository, select a branch, and optionally add a production URL.",
+                      "Enter a public GitHub repository or select a private repository shared with the GitHub App. Choose a branch and optionally add a production URL.",
                     ],
                     [
                       "02",

@@ -1,4 +1,4 @@
-import { readFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { Pool } from "pg";
@@ -30,16 +30,18 @@ async function connect(): Promise<DB> {
     await pg.waitReady;
     db = pg;
   }
-  const sql = await readFile(
-    path.join(process.cwd(), "migrations/001_initial.sql"),
-    "utf8",
-  );
-  // Migration statements are idempotent and also work with PGlite prepared queries.
-  for (const statement of sql
-    .split(";")
-    .map((s) => s.trim())
-    .filter(Boolean))
-    await db.query(statement);
+  const directory = path.join(process.cwd(), "migrations");
+  // All current migrations are idempotent; apply in filename order on upgrades.
+  for (const migration of (await readdir(directory))
+    .filter((name) => /^\d+.*\.sql$/.test(name))
+    .sort()) {
+    const sql = await readFile(path.join(directory, migration), "utf8");
+    for (const statement of sql
+      .split(";")
+      .map((s) => s.trim())
+      .filter(Boolean))
+      await db.query(statement);
+  }
   return db;
 }
 export async function query<T = Record<string, unknown>>(

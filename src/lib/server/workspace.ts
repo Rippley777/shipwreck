@@ -11,6 +11,7 @@ export type Project = {
   production_url: string | null;
   source: "github" | "demo";
   created_at: string;
+  github_installation_id?: string | null;
   latest?: StoredScan;
   history?: StoredScan[];
 };
@@ -59,7 +60,7 @@ export async function seedDemo(userId: string) {
 }
 export async function workspace(userId: string) {
   const projects = await query<Project>(
-    "SELECT id,name,repository,branch,production_url,source,created_at FROM projects WHERE user_id=$1 ORDER BY created_at ASC",
+    "SELECT id,name,repository,branch,production_url,source,created_at,github_installation_id FROM projects WHERE user_id=$1 ORDER BY created_at ASC",
     [userId],
   );
   const scans = await query<StoredScan>(

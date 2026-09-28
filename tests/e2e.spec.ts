@@ -164,3 +164,87 @@ test("account lifecycle, project settings/deletion, CSRF and tenant isolation", 
   ).toBeVisible();
   await context.close();
 });
+
+test("private repository picker carries installation identity through branch selection and project creation", async ({
+  page,
+}) => {
+  const email = `private-ui-${Date.now()}@example.com`;
+  await page.request.post("/api/auth/signup", {
+    headers: { Origin: origin },
+    data: { name: "Private Captain", email, password: "private-test-password" },
+  });
+  const workspace = await (await page.request.get("/api/workspace")).json();
+  await page.route("**/api/workspace", (route) =>
+    route.fulfill({
+      json: {
+        ...workspace,
+        githubApp: { login: "captain" },
+        githubAppConfigured: true,
+      },
+    }),
+  );
+  await page.route("**/api/repositories", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 456,
+          full_name: "private-org/service",
+          default_branch: "release",
+          private: true,
+          installation_id: "123",
+        },
+      ],
+    }),
+  );
+  let branchURL = "";
+  await page.route("**/api/branches?**", (route) => {
+    branchURL = route.request().url();
+    return route.fulfill({ json: [{ name: "release" }, { name: "main" }] });
+  });
+  let submitted: Record<string, unknown> = {};
+  await page.route("**/api/projects", (route) => {
+    submitted = route.request().postDataJSON();
+    return route.fulfill({
+      status: 400,
+      json: {
+        error: "Mock boundary: request captured without contacting GitHub.",
+      },
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "New project", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Browse connected repositories" })
+    .click();
+  await page
+    .getByLabel("Select repository")
+    .selectOption("private-org/service");
+  await expect(
+    page.getByText(/This repository uses read-only GitHub App access/),
+  ).toBeVisible();
+  await expect(page.getByRole("combobox").last()).toHaveValue("release");
+  expect(new URL(branchURL).searchParams.get("installation_id")).toBe("123");
+  await page
+    .getByRole("button", { name: "Create project & run Hull Check" })
+    .click();
+  await expect(page.getByText(/Mock boundary: request captured/)).toBeVisible();
+  expect(submitted.github_installation_id).toBe("123");
+  expect(submitted.repository).toBe("private-org/service");
+  expect(submitted.branch).toBe("release");
+  await page.keyboard.press("Escape");
+  await page
+    .locator(".sidebar")
+    .getByRole("button", { name: "Settings", exact: true })
+    .click();
+  await expect(page.getByText("GitHub App connected as captain")).toBeVisible();
+  await page.route("**/api/github/app/installations", (route) =>
+    route.fulfill({ json: [{ id: 123, account: { login: "private-org" } }] }),
+  );
+  await page.getByRole("button", { name: "View installations" }).click();
+  await expect(page.getByText("Installation 123")).toBeVisible();
+  await page.unroute("**/api/workspace");
+  await page.getByRole("button", { name: "Disconnect App" }).click();
+  await expect(
+    page.getByRole("link", { name: "Connect GitHub App" }),
+  ).toHaveCount(0);
+});

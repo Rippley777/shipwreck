@@ -36,3 +36,11 @@ GitHub REST ingestion resolves a branch to an immutable commit, reads bounded te
 ## MVP tradeoffs
 
 Synchronous bounded scans on a Node server; an external queue/worker is the next scaling step. Provider backup settings, deployed environment values, dynamic authorization and runtime behavior cannot be verified from source alone. No dependency vulnerability claim without an advisory source. No arbitrary numeric AI score. No billing collection, organization hierarchy or autonomous changes.
+
+## GitHub App private access
+
+Migration `002_github_app.sql` adds a user-scoped App connection with encrypted user/refresh tokens, expiry and refresh lease, and an optional installation ID on each project. App authorization is independent of legacy OAuth sign-in and uses encrypted session-bound state and PKCE. The installation setup callback is followed by user authorization and accessible-installation verification; incoming installation IDs never grant access on their own.
+
+Private repository browsing uses GitHub's user/installation intersection endpoints. Each branch lookup and scan checks repository access with the user's App token, checks that the requested installation is active and belongs to the configured App, then creates an installation token limited to that repository with read-only contents permissions. Temporary installation tokens are held in request memory and revoked in a finally block. Database-backed refresh leases protect rotating user tokens across concurrent processes; disconnect deletes the user-scoped credentials and prevents stale refresh completion.
+
+See [configuration and operating instructions](GITHUB_APP_SETUP.md).

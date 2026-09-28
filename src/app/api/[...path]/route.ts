@@ -17,6 +17,13 @@ import {
   workspace,
 } from "@/lib/server/workspace";
 import { github, githubToken, ingest } from "@/lib/server/github";
+import {
+  appConnection,
+  appUserToken,
+  withAppRepository,
+} from "@/lib/server/github-app-connection";
+import { githubAppClient } from "@/lib/server/github-app-client";
+import { githubAppConfigured } from "@/lib/server/github-app-config";
 import { inspectURL } from "@/lib/server/production";
 import { scan } from "@/lib/scanner";
 import { projectFixture } from "@/lib/demo";
@@ -26,6 +33,11 @@ const projectSchema = z.object({
   name: z.string().trim().min(2).max(60),
   repository: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
   branch: z.string().min(1).max(150).default("main"),
+  github_installation_id: z
+    .string()
+    .regex(/^[1-9]\d*$/)
+    .nullable()
+    .optional(),
   production_url: z.union([z.literal(""), z.url().max(2000)]).optional(),
 });
 const reply = (data: unknown, status = 200) =>
@@ -55,24 +67,59 @@ export async function GET(req: NextRequest) {
         projects: await workspace(user.id),
         github: connection[0]?.login ?? null,
         oauthConfigured: !!process.env.GITHUB_CLIENT_ID,
+        githubApp: await (async () => {
+          const connection = await appConnection(user.id);
+          return connection ? { login: connection.login } : null;
+        })(),
+        githubAppConfigured: githubAppConfigured(),
       });
     }
     if (route === "/api/repositories") {
+      await rateLimit("github-browse:" + user.id, 60, 900);
+      if (await appConnection(user.id))
+        return reply(
+          await githubAppClient.repositories(await appUserToken(user.id)),
+        );
       const token = await githubToken(user.id);
-      if (!token) return reply({ error: "Connect GitHub first." }, 400);
+      if (!token)
+        return reply({ error: "Connect GitHub or the GitHub App first." }, 400);
+      const repos = await github<
+        {
+          id: number;
+          full_name: string;
+          default_branch: string;
+          private: boolean;
+        }[]
+      >("/user/repos?sort=updated&per_page=100", token);
       return reply(
-        await github("/user/repos?sort=updated&per_page=100", token),
+        repos
+          .filter((r) => !r.private)
+          .map((r) => ({
+            id: r.id,
+            full_name: r.full_name,
+            default_branch: r.default_branch,
+            private: false,
+            installation_id: null,
+          })),
+      );
+    }
+    if (route === "/api/github/app/installations") {
+      return reply(
+        await githubAppClient.installations(await appUserToken(user.id)),
       );
     }
     if (route === "/api/branches") {
       const repo = req.nextUrl.searchParams.get("repository") ?? "";
+      const installationId = req.nextUrl.searchParams.get("installation_id");
       if (!/^[\w.-]+\/[\w.-]+$/.test(repo))
         return reply({ error: "Invalid repository" }, 400);
+      await rateLimit("github-browse:" + user.id, 60, 900);
+      const branches = (token?: string) =>
+        github(`/repos/${repo}/branches?per_page=100`, token);
       return reply(
-        await github(
-          `/repos/${repo}/branches?per_page=100`,
-          await githubToken(user.id),
-        ),
+        installationId
+          ? await withAppRepository(user.id, repo, installationId, branches)
+          : await branches(await githubToken(user.id)),
       );
     }
     return reply({ error: "Not found" }, 404);
@@ -176,9 +223,21 @@ export async function POST(req: NextRequest) {
       await logout();
       return reply({ ok: true });
     }
+    if (route === "/api/github/app/disconnect") {
+      await query("DELETE FROM github_app_connections WHERE user_id=$1", [
+        user.id,
+      ]);
+      return reply({ ok: true });
+    }
     if (route === "/api/projects") {
       const input = projectSchema.parse(body);
       await rateLimit("projects:" + user.id, 20, 3600);
+      if (input.github_installation_id)
+        await githubAppClient.validateRepository(
+          await appUserToken(user.id),
+          input.repository,
+          input.github_installation_id,
+        );
       const count = await query<{ count: string }>(
         "SELECT count(*) FROM projects WHERE user_id=$1",
         [user.id],
@@ -190,7 +249,7 @@ export async function POST(req: NextRequest) {
         );
       const id = randomUUID();
       await query(
-        "INSERT INTO projects (id,user_id,name,repository,branch,production_url,source) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        "INSERT INTO projects (id,user_id,name,repository,branch,production_url,source,github_installation_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
         [
           id,
           user.id,
@@ -199,6 +258,7 @@ export async function POST(req: NextRequest) {
           input.branch,
           input.production_url || null,
           "github",
+          input.github_installation_id ?? null,
         ],
       );
       return reply({ id });
@@ -211,11 +271,18 @@ export async function POST(req: NextRequest) {
       const repo =
         project.source === "demo"
           ? { files: projectFixture(project.name), sha: "demo-current" }
-          : await ingest(
-              project.repository,
-              project.branch,
-              await githubToken(user.id),
-            );
+          : project.github_installation_id
+            ? await withAppRepository(
+                user.id,
+                project.repository,
+                project.github_installation_id,
+                (token) => ingest(project.repository, project.branch, token),
+              )
+            : await ingest(
+                project.repository,
+                project.branch,
+                await githubToken(user.id),
+              );
       const observation = project.production_url
         ? await inspectURL(project.production_url)
         : undefined;
@@ -227,8 +294,22 @@ export async function POST(req: NextRequest) {
       const input = projectSchema.extend({ id: z.uuid() }).parse(body);
       const p = await ownedProject(user.id, input.id);
       if (!p) return reply({ error: "Project not found." }, 404);
+      const installationId =
+        input.github_installation_id === undefined
+          ? p.github_installation_id
+          : input.github_installation_id;
+      if (
+        installationId &&
+        (input.repository !== p.repository ||
+          installationId !== p.github_installation_id)
+      )
+        await githubAppClient.validateRepository(
+          await appUserToken(user.id),
+          input.repository,
+          installationId,
+        );
       await query(
-        "UPDATE projects SET name=$1,repository=$2,branch=$3,production_url=$4 WHERE id=$5 AND user_id=$6",
+        "UPDATE projects SET name=$1,repository=$2,branch=$3,production_url=$4,github_installation_id=$7 WHERE id=$5 AND user_id=$6",
         [
           input.name,
           input.repository,
@@ -236,6 +317,7 @@ export async function POST(req: NextRequest) {
           input.production_url || null,
           input.id,
           user.id,
+          installationId ?? null,
         ],
       );
       return reply({ ok: true });

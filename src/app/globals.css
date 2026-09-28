@@ -2762,3 +2762,36 @@ main {
 .page-heading > .button {
   flex-shrink: 0;
 }
+.github-app-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 20px 0 12px;
+}
+.github-installations {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 15px;
+}
+.github-installations > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+.github-installations > div:last-child {
+  border: 0;
+}
+.github-installations strong {
+  font-weight: 500;
+}
+.github-installations span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+}
+.github-installations > p {
+  padding: 15px;
+}

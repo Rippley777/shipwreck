@@ -50,6 +50,16 @@ export function ProjectSettings({
   return (
     <section className="panel padded settings-panel">
       <h2>Project configuration</h2>
+      {project.github_installation_id && (
+        <div className="info-box">
+          <ShieldCheck size={17} />
+          <p>
+            Connected through GitHub App installation{" "}
+            {project.github_installation_id}. Manage private repository access
+            in workspace settings.
+          </p>
+        </div>
+      )}
       <form onSubmit={submit}>
         <label>
           Project name
@@ -225,9 +235,13 @@ export function AuthForm({
 export function NewProject({
   onCreated,
   githubConnected,
+  githubAppAvailable,
+  githubAppConnected,
 }: {
   onCreated: (id: string) => Promise<void>;
   githubConnected: boolean;
+  githubAppAvailable: boolean;
+  githubAppConnected: boolean;
 }) {
   const [name, setName] = useState("");
   const [repository, setRepository] = useState("");
@@ -236,8 +250,14 @@ export function NewProject({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [repos, setRepos] = useState<
-    { full_name: string; default_branch: string }[]
+    {
+      full_name: string;
+      default_branch: string;
+      private: boolean;
+      installation_id: string | null;
+    }[]
   >([]);
+  const [installationId, setInstallationId] = useState<string | null>(null);
   const [branches, setBranches] = useState<{ name: string }[]>([]);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -251,6 +271,7 @@ export function NewProject({
           .replace(/\.git$/, ""),
         branch,
         production_url: url,
+        github_installation_id: installationId,
       });
       await onCreated(result.id);
     } catch (e) {
@@ -290,10 +311,24 @@ export function NewProject({
               required
               placeholder="owner / repository"
               value={repository}
-              onChange={(e) => setRepository(e.target.value)}
+              onChange={(e) => {
+                setRepository(e.target.value);
+                setInstallationId(null);
+                setBranches([]);
+              }}
             />
           </div>
         </label>
+        {githubAppAvailable && !githubAppConnected && (
+          <Link
+            prefetch={false}
+            className="text-button mint-text"
+            href="/api/github/app/connect"
+          >
+            Connect GitHub App for private repositories
+            <ArrowRight size={14} />
+          </Link>
+        )}
         {githubConnected && (
           <>
             <button
@@ -319,13 +354,19 @@ export function NewProject({
                   );
                   if (repo) {
                     setRepository(repo.full_name);
+                    setInstallationId(repo.installation_id);
+                    setBranches([]);
                     setBranch(repo.default_branch);
                     if (!name) setName(repo.full_name.split("/")[1]);
                     try {
                       setBranches(
                         await api(
                           "branches?repository=" +
-                            encodeURIComponent(repo.full_name),
+                            encodeURIComponent(repo.full_name) +
+                            (repo.installation_id
+                              ? "&installation_id=" +
+                                encodeURIComponent(repo.installation_id)
+                              : ""),
                         ),
                       );
                     } catch (err) {
@@ -336,11 +377,23 @@ export function NewProject({
               >
                 <option>Select repository</option>
                 {repos.map((r) => (
-                  <option key={r.full_name}>{r.full_name}</option>
+                  <option key={r.full_name} value={r.full_name}>
+                    {r.full_name}
+                    {r.private ? " · Private" : " · Public"}
+                  </option>
                 ))}
               </select>
             )}
           </>
+        )}
+        {installationId && (
+          <div className="info-box">
+            <ShieldCheck size={17} />
+            <p>
+              This repository uses read-only GitHub App access. Membership and
+              installation access are verified for every scan.
+            </p>
+          </div>
         )}
         <label>
           Branch

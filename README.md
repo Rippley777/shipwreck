@@ -14,7 +14,7 @@ npm run dev
 
 Open **http://localhost:3000**. Development automatically opens a fresh, isolated demo workspace with three projects. No GitHub credentials, AI key, Docker, or external database are required. Embedded PostgreSQL persists in `.shipwreck/data`. Use a single application process when using embedded storage.
 
-To scan your own project, select **New project**, provide a public GitHub `owner/repository` and its branch, optionally add a public production URL, then run a Hull Check. Create an account to keep your own workspace separate from demo data. Public GitHub API calls are subject to GitHub's unauthenticated limits.
+To scan your own project, select **New project**, provide a public GitHub `owner/repository` and its branch, optionally add a public production URL, then run a Hull Check. Create an account to keep your own workspace separate from demo data. For private repositories, follow the [GitHub App setup guide](docs/GITHUB_APP_SETUP.md), connect the App in Settings, and select the repository from the connected picker. Public GitHub API calls are subject to GitHub's unauthenticated limits.
 
 ```sh
 npm run scan -- /path/to/local/repository
@@ -26,7 +26,7 @@ For pure JSON output use `npm run --silent scan -- /path --json`. The CLI exits 
 ## What is implemented
 
 - Signup, login, logout, salted scrypt passwords, hashed opaque session tokens, origin protection, rate limiting, and owner-scoped database access.
-- GitHub OAuth sign-in/connection, repository selection, branch selection, public repository ingestion pinned to an immutable commit, and safe production URL inspection.
+- GitHub OAuth sign-in/connection, read-only GitHub App installations for private repositories, repository/branch selection, ingestion pinned to an immutable commit, and safe production URL inspection. App tokens refresh automatically, and each private scan uses a temporary token restricted to its repository.
 - 32 independent deterministic checks with severity, confidence, evidence, explanation and remediation.
 - Dashboard, project reports, category/status filters, environment inventory, detected technology manifest, persistent scan history, previous report viewing, critical-count comparisons, and project settings/deletion.
 - Copyable coding-agent fix prompts; clipboard feedback, loading/error states, keyboard dismissal/focus management and responsive layouts.
@@ -41,6 +41,7 @@ See [architecture decisions](docs/ARCHITECTURE.md) and [database migration](migr
 src/app/                      Next.js routes and styles
 src/app/api/[...path]/         Workspace, auth, projects, scans, health API
 src/app/api/auth/github/      OAuth authorization and callback
+src/app/api/github/app/       App authorization, installation setup and callback
 src/components/              Interactive dashboard and report UI
 src/lib/scanner/               Framework-independent checks, types and engine
 src/lib/server/                Storage, sessions, GitHub ingestion, safe HTTP inspection
@@ -48,6 +49,7 @@ src/lib/demo.ts                Deliberately imperfect, non-executable source fix
 src/cli.ts                    Local repository scanner
 src/maintenance.ts            Expired session/demo data cleanup
 migrations/001_initial.sql     PostgreSQL schema and indexes
+migrations/002_github_app.sql  App credentials, refresh lease and project installation binding
 tests/                       Scanner/security tests and browser integration tests
 ```
 
@@ -55,17 +57,18 @@ The TypeScript scanner is shared by the API and CLI. Rust would not provide enou
 
 ### Database schema
 
-| Table                    | Purpose                                                                   |
-| ------------------------ | ------------------------------------------------------------------------- |
-| `users`                  | Account identity, salted password hash, GitHub identity, demo flag        |
-| `sessions`               | SHA-256 hashes of random 256-bit session tokens and expiry                |
-| `repository_connections` | AES-256-GCM encrypted OAuth token, provider login                         |
-| `projects`               | Owner, repository, branch, deployment URL, source type                    |
-| `scans`                  | Immutable commit, timestamp, JSONB report with findings/evidence/manifest |
-| `subscriptions`          | Future plan identifier, customer identifier, status; no payments enabled  |
-| `rate_limits`            | Atomic request counters and reset times                                   |
+| Table                    | Purpose                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| `users`                  | Account identity, salted password hash, GitHub identity, demo flag                        |
+| `sessions`               | SHA-256 hashes of random 256-bit session tokens and expiry                                |
+| `github_app_connections` | Encrypted App user/refresh credentials, App and GitHub identity, expiry and refresh lease |
+| `repository_connections` | AES-256-GCM encrypted OAuth token, provider login                                         |
+| `projects`               | Owner, repository, branch, deployment URL, source type                                    |
+| `scans`                  | Immutable commit, timestamp, JSONB report with findings/evidence/manifest                 |
+| `subscriptions`          | Future plan identifier, customer identifier, status; no payments enabled                  |
+| `rate_limits`            | Atomic request counters and reset times                                                   |
 
-User → projects → scans and user → connections/sessions/subscriptions use cascading foreign keys. Ownership, scan chronology and session expiry are indexed. Results are stored as versionable JSONB snapshots to preserve their exact historical meaning. The initial migration is idempotent and applied on first storage connection; subsequent schema changes should use an ordered migration runner.
+User → projects → scans and user → connections/sessions/subscriptions use cascading foreign keys. Ownership, scan chronology and session expiry are indexed. Results are stored as versionable JSONB snapshots to preserve their exact historical meaning. Current migrations are idempotent and applied in filename order on storage initialization. Future non-idempotent changes should introduce a tracked migration runner.
 
 ## Check library
 
@@ -102,18 +105,24 @@ The overview labels critical findings explicitly because this count includes bot
 
 ## Environment variables
 
-| Variable               | Use                                                                                                                |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`         | PostgreSQL connection string; omit for local embedded PostgreSQL                                                   |
-| `APP_URL`              | Canonical application origin, e.g. `https://shipwreck.example.com`; must match browser origin for writes and OAuth |
-| `TOKEN_ENCRYPTION_KEY` | 64 hex characters (32 random bytes), required for OAuth tokens                                                     |
-| `GITHUB_CLIENT_ID`     | GitHub OAuth App client ID                                                                                         |
-| `GITHUB_CLIENT_SECRET` | GitHub OAuth App client secret                                                                                     |
-| `ENABLE_DEMO`          | Set `true` to allow demo in production; development enables it automatically                                       |
-| `POSTGRES_PASSWORD`    | Required only by Docker Compose                                                                                    |
-| `TEST_URL`             | Optional URL for browser tests; defaults to `http://localhost:3000`                                                |
+| Variable                      | Use                                                                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                | PostgreSQL connection string; omit for local embedded PostgreSQL                                                   |
+| `APP_URL`                     | Canonical application origin, e.g. `https://shipwreck.example.com`; must match browser origin for writes and OAuth |
+| `TOKEN_ENCRYPTION_KEY`        | 64 hex characters (32 random bytes), required for OAuth tokens                                                     |
+| `GITHUB_CLIENT_ID`            | GitHub OAuth App client ID                                                                                         |
+| `GITHUB_APP_ID`               | Numeric GitHub App ID for private repository access                                                                |
+| `GITHUB_APP_SLUG`             | GitHub App URL slug                                                                                                |
+| `GITHUB_APP_CLIENT_ID`        | GitHub App user authorization client ID                                                                            |
+| `GITHUB_APP_CLIENT_SECRET`    | GitHub App user authorization client secret                                                                        |
+| `GITHUB_APP_PRIVATE_KEY`      | RSA PEM value; actual newlines or literal `\n` escapes                                                             |
+| `GITHUB_APP_PRIVATE_KEY_PATH` | Alternative mounted PEM file path                                                                                  |
+| `GITHUB_CLIENT_SECRET`        | GitHub OAuth App client secret                                                                                     |
+| `ENABLE_DEMO`                 | Set `true` to allow demo in production; development enables it automatically                                       |
+| `POSTGRES_PASSWORD`           | Required only by Docker Compose                                                                                    |
+| `TEST_URL`                    | Optional URL for browser tests; defaults to `http://localhost:3000`                                                |
 
-Generate an encryption key with `openssl rand -hex 32`. Do not rotate it without first re-encrypting existing connection tokens or requiring users to reconnect. GitHub OAuth callback: `${APP_URL}/api/auth/github/callback`. Scope is deliberately limited to `read:user`; it does **not** grant private repository access. A scoped GitHub App installation flow is the next step for private repository ingestion. Avoid broad `repo` OAuth scope merely to make the demo work.
+Generate an encryption key with `openssl rand -hex 32`. Do not rotate it without first re-encrypting existing connection tokens or requiring users to reconnect. GitHub OAuth callback: `${APP_URL}/api/auth/github/callback`. Scope is deliberately limited to `read:user`; it does **not** grant private repository access. Private repository ingestion uses the separate GitHub App installation flow with read-only permissions. See [GitHub App setup](docs/GITHUB_APP_SETUP.md) for App credentials, callback/setup URLs, installation selection and token lifecycle.
 
 ## Demo and retention
 
@@ -145,7 +154,9 @@ Unit/security tests cover vulnerable and healthy configuration pairs, determinis
 
 ## Deployment
 
-Use a persistent Node.js service with managed PostgreSQL or the included Compose setup.
+For Azure, use the checked-in Bicep infrastructure and deployment script in the [Azure deployment guide](docs/AZURE_DEPLOYMENT.md). It provisions a stable HTTPS URL, private managed PostgreSQL, and managed-identity image pulls.
+
+For another provider, use a persistent Node.js service with managed PostgreSQL or the included Compose setup.
 
 1. Set `DATABASE_URL`, `APP_URL`, and optional GitHub OAuth credentials in your deployment secret store. Use HTTPS for `APP_URL` and a PostgreSQL connection with provider-supported TLS verification. Keep `ENABLE_DEMO=false` for a normal production install.
 2. Run `npm ci`, `npm run build`, then `npm start`. The schema is created on first storage use. Restrict the runtime database role after applying migrations if required by your deployment policy.
@@ -161,7 +172,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-The PostgreSQL port is not published. The app image runs as a non-root user. The Docker configuration is supplied but should be tested in your target infrastructure; no external deployment is performed automatically.
+The PostgreSQL port is not published. The app image runs as a non-root user. The Azure script explicitly provisions cloud resources; the Docker Compose configuration runs locally.
 
 ## Security considerations and limits
 
@@ -169,14 +180,14 @@ The PostgreSQL port is not published. The app image runs as a non-root user. The
 - Password hashes use random salts with scrypt. Sessions store only token hashes. GitHub tokens are encrypted with authenticated AES-GCM and are never returned to the browser.
 - Remote code is never executed. Repository bodies live only in bounded process memory; reports retain paths, names and redacted descriptions, never source contents or secret values.
 - URL inspection blocks private, local, reserved and mapped private addresses; pins resolved IPs; validates each redirect; permits only HTTP(S) on standard ports; enforces timeouts; destroys response bodies. Cookie values are discarded. It only inspects the supplied URL, not speculative debug paths.
-- GitHub scans are limited to 350 eligible files, 8 MB total, 2 MB per file, four redirect steps for HTTP, and a bounded ingestion window. Large/private repositories should use the local CLI. Git submodules and symlinks are not followed. Lockfile presence is verified; no vulnerability/advisory or EOL claims are made without a live advisory source.
+- GitHub scans are limited to 350 eligible files, 8 MB total, 2 MB per file, four redirect steps for HTTP, and a bounded ingestion window. Large repositories should use the local CLI. Private repositories can use GitHub App access or a local checkout. Git submodules and symlinks are not followed. Lockfile presence is verified; no vulnerability/advisory or EOL claims are made without a live advisory source.
 - HTTP inspection cannot prove availability over time, authenticated session safety or health endpoint behavior beyond the requested URL. Backups, restore success, production environment values, provider limits, runtime authorization, retries and actual spending are not verified.
 - This is an MVP, not an audited SaaS service. Email verification, password reset, MFA, durable scan workers, real billing, scheduled scans, audit trails and webhook-triggered rescans are not yet implemented. Subscription storage is an architectural seam only. API rate limits are database-backed and basic; add trusted-proxy-aware abuse controls before public exposure.
 - CSP blocks external frames and limits resource origins; Next.js currently needs inline script/style allowances in this setup. A nonce-based CSP is a hardening follow-up.
 
 ## Next 10 highest-value additions
 
-1. Fine-grained GitHub App installations for private repositories and short-lived tokens.
+1. Webhook-driven installation status, revocation notifications and repository rescans.
 2. Durable scan workers with cancellation, progress events and retry-safe jobs.
 3. AST-based ownership and tenant-boundary tracing with framework-aware tests.
 4. OSV advisory matching against resolved lockfile versions.

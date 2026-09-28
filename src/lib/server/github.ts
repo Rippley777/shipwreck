@@ -7,10 +7,19 @@ export async function githubToken(userId: string) {
   );
   return rows[0] ? decrypt(rows[0].encrypted_token) : undefined;
 }
-export async function github<T>(route: string, token?: string): Promise<T> {
+export async function github<T>(
+  route: string,
+  token?: string,
+  options?: { method: "POST" | "DELETE"; body?: unknown },
+): Promise<T> {
+  if (!route.startsWith("/") || route.startsWith("//"))
+    throw new Error("Invalid GitHub API route.");
   const response = await fetch("https://api.github.com" + route, {
+    method: options?.method ?? "GET",
+    body: options?.body ? JSON.stringify(options.body) : undefined,
     headers: {
       Accept: "application/vnd.github+json",
+      ...(options?.body ? { "Content-Type": "application/json" } : {}),
       "X-GitHub-Api-Version": "2022-11-28",
       ...(token ? { Authorization: "Bearer " + token } : {}),
     },
@@ -20,11 +29,14 @@ export async function github<T>(route: string, token?: string): Promise<T> {
   if (!response.ok)
     throw new Error(
       response.status === 404
-        ? "Repository or branch not found. Private repositories require a GitHub connection."
-        : response.status === 403
-          ? "GitHub API limit reached or access denied."
-          : "GitHub could not complete the request.",
+        ? "Repository or branch not found. For private repositories, connect the GitHub App and select an accessible repository."
+        : response.status === 401
+          ? "GitHub authorization expired or was revoked. Reconnect GitHub in workspace settings."
+          : response.status === 403
+            ? "GitHub API limit reached or access denied."
+            : "GitHub could not complete the request.",
     );
+  if (response.status === 204) return undefined as T;
   return response.json();
 }
 export const allowedFile = (path: string) =>
