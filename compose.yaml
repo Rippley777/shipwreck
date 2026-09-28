@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://shipwreck:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@database:5432/shipwreck
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      ENABLE_DEMO: ${ENABLE_DEMO:-false}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: shipwreck
+      POSTGRES_DB: shipwreck
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shipwreck"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  postgres-data:

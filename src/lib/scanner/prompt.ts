@@ -1,0 +1,4 @@
+import type { CheckResult } from "./types";
+export function fixPrompt(f: CheckResult): string {
+  return `Fix production-readiness finding: ${f.title}\n\nWhat was detected: ${f.message}\nSeverity: ${f.severity}. Confidence: ${f.confidence}. Status: ${f.status}.\n${f.status === "unverified" ? "This is a verification gap, not a confirmed vulnerability. First determine whether existing controls already address it.\n" : ""}\nEvidence:\n${f.evidence.map((e) => `- ${e.file}${e.line ? ":" + e.line : ""}: ${e.detail}`).join("\n")}\n\nWhy it matters: ${f.why}\n\nGoal: ${f.fix}\n\nRequirements:\n- Inspect relevant code and configuration before making changes.\n- Preserve existing API behavior and tenant isolation.\n- Never add secrets to source or logs.\n- Add regression tests covering the failure and healthy behavior.\n- Run the existing test suite and report verification evidence.\n- Explain any provider configuration that cannot be verified locally.`;
+}

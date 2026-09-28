@@ -1,0 +1,8 @@
+node_modules
+.next
+.git
+.shipwreck
+.env*
+artifacts
+test-results
+playwright-report
