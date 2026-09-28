@@ -22,11 +22,13 @@ async function connect(): Promise<DB> {
   } else {
     if (
       process.env.NODE_ENV === "production" &&
-      process.env.ENABLE_DEMO !== "true"
+      process.env.ENABLE_DEMO !== "true" &&
+      !process.env.EMBEDDED_DATABASE_PATH
     )
       throw new Error("DATABASE_URL is required for production.");
-    await mkdir(".shipwreck", { recursive: true });
-    const pg = new PGlite(path.resolve(".shipwreck/data"));
+    const directory = process.env.EMBEDDED_DATABASE_PATH || ".shipwreck/data";
+    await mkdir(directory, { recursive: true });
+    const pg = new PGlite(path.resolve(/*turbopackIgnore: true*/ directory));
     await pg.waitReady;
     db = pg;
   }

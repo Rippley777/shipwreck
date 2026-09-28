@@ -1,5 +1,9 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
+  output: "standalone",
+  outputFileTracingIncludes: {
+    "/api/*": ["./migrations/*.sql", "./node_modules/@electric-sql/pglite/dist/**/*"],
+  },
   serverExternalPackages: ["@electric-sql/pglite", "pg"],
   poweredByHeader: false,
   devIndicators: false,

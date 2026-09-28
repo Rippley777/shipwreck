@@ -41,3 +41,16 @@ Deployed on September 28, 2026 to `rg-shipwreck-prod` in Central US. The foundat
 - `APP_URL`, database credentials, and the token encryption key are configured in Azure. GitHub App credentials are not yet supplied; live private repository authorization remains unverified.
 
 Update and credential-upload commands, resource details and ongoing cost estimates are in [Azure deployment](AZURE_DEPLOYMENT.md). Deployment state, credentials, verification JSON, and browser captures are stored under ignored `.shipwreck/azure/`; its state file and directory use restrictive permissions.
+
+## Azure F1 Free migration
+
+The current deployment is https://shipwreck-free-daac2bd8ebe4.azurewebsites.net in Central US. Azure reports hosting SKU `F1`, tier `Free`. The resource group contains only the free App Service site and plan. The previous registry, Container App, PostgreSQL server, managed environment/resource group, load balancer, public IP, private DNS zone/link, VNet and managed identity have been removed.
+
+- The Linux AMD64 Node 22 production build, ESLint, TypeScript, Bicep compilation, Python compilation and all 36 unit/security tests passed.
+- The account, session and rate-limit records were backed up privately, restored into PGlite and uploaded to `/home/shipwreck/data`. Every uploaded database file matched the migration copy's SHA-256 checksum.
+- After the new code deployment, a fresh snapshot from the free app’s persistent storage was checked: account identity and password hash matched the original database. The app was restarted after that check.
+- The corrected ZIP deployment completed successfully, and `/api/health` returned `{"status":"ok"}` with demo access disabled. After the persistence-check restart, live Playwright checks passed HTTPS, database health, sign-up form visibility, demo rejection (403), cross-origin write rejection (403), and no browser page errors.
+- App Service’s Node deployment optimizer excludes nested `node_modules` folders. The deployment script materializes Next.js external-dependency links and moves their aliases into the root dependency folder before packaging. This layout also passed health checks in a local Linux container containing only the deployment package.
+- The app uses Azure's Node 22 runtime, one server process and included persistent storage. No paid fallback is allowed. The old paid deployment script requires explicit `--allow-paid`.
+
+The earlier Container Apps results are historical. See [Azure deployment](AZURE_DEPLOYMENT.md) for current commands, hard quota limits, credentials and backup guidance. Live GitHub App authorization remains unverified without operator credentials.

@@ -20,7 +20,7 @@ GitHub distinguishes the installation setup URL from the user authorization call
 
 ## Configure the deployment
 
-For Azure, follow [Azure deployment and GitHub secrets](AZURE_DEPLOYMENT.md#configure-github-after-you-have-the-url) to get a stable HTTPS URL and upload credentials safely.
+For Azure, follow [Azure deployment and GitHub secrets](AZURE_DEPLOYMENT.md#github-app-configuration) to get a stable HTTPS URL and upload credentials safely.
 
 Add these values to `.env.local` for development or your deployment secret store:
 

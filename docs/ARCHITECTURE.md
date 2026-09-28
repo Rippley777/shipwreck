@@ -44,3 +44,7 @@ Migration `002_github_app.sql` adds a user-scoped App connection with encrypted 
 Private repository browsing uses GitHub's user/installation intersection endpoints. Each branch lookup and scan checks repository access with the user's App token, checks that the requested installation is active and belongs to the configured App, then creates an installation token limited to that repository with read-only contents permissions. Temporary installation tokens are held in request memory and revoked in a finally block. Database-backed refresh leases protect rotating user tokens across concurrent processes; disconnect deletes the user-scoped credentials and prevents stale refresh completion.
 
 See [configuration and operating instructions](GITHUB_APP_SETUP.md).
+
+## Azure free hosting
+
+Azure F1 Free runs the Next.js standalone server in one Node 22 process. `EMBEDDED_DATABASE_PATH=/home/shipwreck/data` explicitly permits persistent embedded storage with demo access disabled. This path is outside the ZIP deployment directory, so application updates preserve data. Managed PostgreSQL remains supported through `DATABASE_URL` on other deployments. Embedded storage requires one application process and has no managed backup or high availability; see the Azure deployment guide for limits.

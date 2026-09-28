@@ -154,7 +154,7 @@ Unit/security tests cover vulnerable and healthy configuration pairs, determinis
 
 ## Deployment
 
-For Azure, use the checked-in Bicep infrastructure and deployment script in the [Azure deployment guide](docs/AZURE_DEPLOYMENT.md). It provisions a stable HTTPS URL, private managed PostgreSQL, and managed-identity image pulls.
+For Azure, use the **F1 Free** App Service deployment in the [Azure deployment guide](docs/AZURE_DEPLOYMENT.md). It provides a stable HTTPS URL and persistent embedded PostgreSQL for a single application process, with hard free-tier quotas and no paid fallback.
 
 For another provider, use a persistent Node.js service with managed PostgreSQL or the included Compose setup.
 

@@ -84,6 +84,7 @@ def github_env(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--allow-paid', action='store_true', help='Explicitly allow paid Azure infrastructure')
     parser.add_argument('--location', default='centralus')
     parser.add_argument('--resource-group', default='rg-shipwreck-prod')
     parser.add_argument('--github-env', type=Path, help='Private dotenv file containing GitHub settings')
@@ -92,6 +93,8 @@ def main():
     parser.add_argument('--local-image', help='Push an existing local Docker image instead of building')
     parser.add_argument('--app-only', action='store_true', help='Skip foundation; requires existing state')
     args = parser.parse_args()
+    if not args.allow_paid:
+        raise ValueError('Paid deployment is disabled. Use scripts/deploy-azure-free.py for F1 Free hosting. Paid infrastructure requires --allow-paid.')
     account = json.loads(run(['az', 'account', 'show', '-o', 'json'], True))
     if STATE.exists():
         state = json.loads(STATE.read_text())
