@@ -42,6 +42,32 @@ const projectSchema = z.object({
 });
 const reply = (data: unknown, status = 200) =>
   NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } });
+function allowedOrigins(requestUrl: string) {
+  const configured = [process.env.APP_URL || new URL(requestUrl).origin];
+  configured.push(
+    ...(process.env.ALLOWED_ORIGINS || "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  );
+  return new Set(
+    configured.map((origin) => {
+      const url = new URL(origin);
+      if (
+        !["http:", "https:"].includes(url.protocol) ||
+        url.username ||
+        url.password ||
+        url.pathname !== "/" ||
+        url.search ||
+        url.hash
+      )
+        throw new Error(
+          "Allowed origins must be HTTP(S) origins without a path.",
+        );
+      return url.origin;
+    }),
+  );
+}
 export async function GET(req: NextRequest) {
   try {
     if (req.nextUrl.pathname === "/api/health") {
@@ -137,8 +163,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const origin = req.headers.get("origin");
-    const expected = new URL(process.env.APP_URL || req.url).origin;
-    if (origin !== expected)
+    if (!origin || !allowedOrigins(req.url).has(origin))
       return reply({ error: "Request origin is not allowed." }, 403);
     if (Number(req.headers.get("content-length") || 0) > 16000)
       return reply({ error: "Request too large" }, 413);

@@ -8,6 +8,7 @@ Shipwreck uses email/password for signup and sign-in. GitHub is an optional repo
 - Sessions use 32 random bytes; only a SHA-256 token hash is stored in the database. Every authenticated request looks up the hash and requires an unexpired session associated with a user. Sessions expire after seven days. Logout deletes the database session, so replaying its cookie fails.
 - Session cookies are HttpOnly, SameSite=Lax, and scoped to `/`. Secure is enabled when `APP_URL` uses HTTPS. Production must use an HTTPS URL.
 - Login/signup attempts are limited per email and globally. Mutation requests require an exact matching Origin and have a bounded request body.
+- API writes accept the canonical `APP_URL` origin and any additional comma-separated HTTP(S) origins in `ALLOWED_ORIGINS`.
 - Projects, updates, deletions, and scan history are scoped by the authenticated user. Scanning a project checks ownership before repository ingestion.
 
 These describe the implemented controls and tested behavior, not a claim that source analysis proves the entire deployment secure.

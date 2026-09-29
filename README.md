@@ -105,22 +105,23 @@ The overview labels critical findings explicitly because this count includes bot
 
 ## Environment variables
 
-| Variable                      | Use                                                                                                                |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`                | PostgreSQL connection string; omit for local embedded PostgreSQL                                                   |
-| `APP_URL`                     | Canonical application origin, e.g. `https://shipwreck.example.com`; must match browser origin for writes and OAuth |
-| `TOKEN_ENCRYPTION_KEY`        | 64 hex characters (32 random bytes), required for OAuth tokens                                                     |
-| `GITHUB_CLIENT_ID`            | GitHub OAuth App client ID                                                                                         |
-| `GITHUB_APP_ID`               | Numeric GitHub App ID for private repository access                                                                |
-| `GITHUB_APP_SLUG`             | GitHub App URL slug                                                                                                |
-| `GITHUB_APP_CLIENT_ID`        | GitHub App user authorization client ID                                                                            |
-| `GITHUB_APP_CLIENT_SECRET`    | GitHub App user authorization client secret                                                                        |
-| `GITHUB_APP_PRIVATE_KEY`      | RSA PEM value; actual newlines or literal `\n` escapes                                                             |
-| `GITHUB_APP_PRIVATE_KEY_PATH` | Alternative mounted PEM file path                                                                                  |
-| `GITHUB_CLIENT_SECRET`        | GitHub OAuth App client secret                                                                                     |
-| `ENABLE_DEMO`                 | Set `true` to allow demo in production; development enables it automatically                                       |
-| `POSTGRES_PASSWORD`           | Required only by Docker Compose                                                                                    |
-| `TEST_URL`                    | Optional URL for browser tests; defaults to `http://localhost:3000`                                                |
+| Variable                      | Use                                                                                                            |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                | PostgreSQL connection string; omit for local embedded PostgreSQL                                               |
+| `APP_URL`                     | Canonical application origin, e.g. `https://shipwreck.example.com`; used for OAuth and accepted for API writes |
+| `ALLOWED_ORIGINS`             | Optional comma-separated extra HTTP(S) origins allowed to make API write requests                              |
+| `TOKEN_ENCRYPTION_KEY`        | 64 hex characters (32 random bytes), required for OAuth tokens                                                 |
+| `GITHUB_CLIENT_ID`            | GitHub OAuth App client ID                                                                                     |
+| `GITHUB_APP_ID`               | Numeric GitHub App ID for private repository access                                                            |
+| `GITHUB_APP_SLUG`             | GitHub App URL slug                                                                                            |
+| `GITHUB_APP_CLIENT_ID`        | GitHub App user authorization client ID                                                                        |
+| `GITHUB_APP_CLIENT_SECRET`    | GitHub App user authorization client secret                                                                    |
+| `GITHUB_APP_PRIVATE_KEY`      | RSA PEM value; actual newlines or literal `\n` escapes                                                         |
+| `GITHUB_APP_PRIVATE_KEY_PATH` | Alternative mounted PEM file path                                                                              |
+| `GITHUB_CLIENT_SECRET`        | GitHub OAuth App client secret                                                                                 |
+| `ENABLE_DEMO`                 | Set `true` to allow demo in production; development enables it automatically                                   |
+| `POSTGRES_PASSWORD`           | Required only by Docker Compose                                                                                |
+| `TEST_URL`                    | Optional URL for browser tests; defaults to `http://localhost:3000`                                            |
 
 Generate an encryption key with `openssl rand -hex 32`. Do not rotate it without first re-encrypting existing connection tokens or requiring users to reconnect. GitHub OAuth repository-linking callback (requires a signed-in, non-demo Shipwreck account): `${APP_URL}/api/auth/github/callback`. Scope is deliberately limited to `read:user`; it does **not** grant private repository access. Private repository ingestion uses the separate GitHub App installation flow with read-only permissions. See [GitHub App setup](docs/GITHUB_APP_SETUP.md) for App credentials, callback/setup URLs, installation selection and token lifecycle.
 
