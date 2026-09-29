@@ -2,6 +2,22 @@
 
 Verified locally on September 28, 2026.
 
+## Authentication provider finding follow-up
+
+The warning was a source-recognition gap: Shipwreck already has scrypt password authentication, hashed database sessions with expiry/revocation, and user-scoped project and scan queries. No provider migration or authentication API changes were necessary. The `auth.provider` rule now recognizes concrete custom session evidence and continues to mark incomplete evidence unverified. A scan of the actual authentication module passes with medium confidence and seven file/line evidence entries, explicitly leaving runtime authorization verification separate.
+
+Verification on Node.js 22:
+
+- `npm test`: **40 passed**, including four new scanner regression tests for custom authentication, incomplete controls, misleading docs/fixtures/patterns, and existing library support.
+- `npm run build`, `npm run lint`, `npm run typecheck`, and `git diff --check`: passed.
+- `npm run test:auth`: **7 passed** against a dedicated production-mode server with demo disabled, a disposable database, and fake OAuth credentials. Coverage includes invalid/expired sessions, rejected and valid credentials, logout token replay, rate limiting, cookie attributes, Origin enforcement, disabled demo access, cross-user projects and scan history, and invalid OAuth callback state.
+- Existing `npm run test:e2e`: **3 passed** against a separate production-mode server with disposable storage and demo enabled. This exercises dashboard/report workflows, account/project lifecycle, and the private repository picker.
+- Read-only Azure configuration verification: OAuth client ID, client secret, encryption key, and HTTPS `APP_URL` are present. No secret values were printed. Successful remote GitHub authorization, credential validity, registered callback/consent, and Secure cookies over HTTPS were not verified by the local HTTP tests.
+
+The changes are local; Azure application code was not redeployed in this follow-up. Existing stored reports remain unchanged; a new scan with the updated scanner is required. See [authentication controls and reproduction steps](AUTHENTICATION.md).
+
+## Earlier baseline verification
+
 | Check                           | Result                                                                              |
 | ------------------------------- | ----------------------------------------------------------------------------------- |
 | Scanner/security suite          | 36 tests passed, including GitHub App access and migration coverage                 |

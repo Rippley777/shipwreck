@@ -145,12 +145,15 @@ npm test
 npm run lint
 npm run typecheck
 npm run build
+npm run test:auth
 # With npm run dev running in another terminal:
 npx playwright install chromium
 npm run test:e2e
 ```
 
 Unit/security tests cover vulnerable and healthy configuration pairs, deterministic reports, evidence completeness, redaction, source/fixture separation, environment extraction, multistage Docker behavior, Stripe ambiguity, production HTTP observations, SSRF protection, password hashing and token encryption. Browser tests cover dashboard search, finding drilldown, clipboard, rescans/history, environment/manifest, mobile overflow, signup/login/logout, settings/deletion, cross-user access and CSRF rejection.
+
+The authentication suite starts an isolated production-mode server with disposable storage. See [authentication controls and verification](docs/AUTHENTICATION.md) for protected-route behavior, OAuth configuration, regression coverage, and external verification limits.
 
 ## Deployment
 

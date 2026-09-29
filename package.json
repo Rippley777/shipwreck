@@ -12,7 +12,8 @@
     "scan": "tsx src/cli.ts",
     "format": "prettier --write src tests docs README.md next.config.ts playwright.config.ts",
     "maintenance": "tsx src/maintenance.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:auth": "playwright test --config playwright.auth.config.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.0",

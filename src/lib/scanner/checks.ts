@@ -1,4 +1,5 @@
 import { environment, matches } from "./analyze";
+import { authentication } from "./authentication";
 import type { Check, Evidence, Outcome, ScanContext } from "./types";
 const outcome = (
   status: Outcome["status"],
@@ -152,14 +153,7 @@ export const checks: Check[] = [
     "Remove the override and configure trusted certificates.",
     /rejectUnauthorized\s*:\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['"]?0/,
   ),
-  presence(
-    "auth.provider",
-    "Authentication provider",
-    "Authentication",
-    "Protected resources require a reliable way to establish user identity.",
-    "Configure an authentication provider and verify protected routes.",
-    /next-auth|@auth\/|@clerk|supabase\/ssr|passport|lucia|better-auth|express-session/,
-  ),
+  authentication,
   {
     id: "auth.secret",
     title: "Authentication secret documentation",
