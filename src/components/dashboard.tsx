@@ -92,7 +92,7 @@ export function Dashboard() {
               "github-not-configured":
                 "Configure GitHub OAuth environment variables to connect your account.",
               "create-account-first":
-                "Create an account before connecting GitHub.",
+                "Sign in or create an account with email and password before connecting GitHub in Settings.",
               "github-app-not-configured":
                 "Configure the GitHub App credentials before connecting private repositories.",
               "github-app-sign-in":
@@ -106,13 +106,18 @@ export function Dashboard() {
               messages[reason] || "GitHub connection failed. Please try again.",
             );
           }
+          const connected = new URLSearchParams(window.location.search).get(
+            "connected",
+          );
           if (
-            new URLSearchParams(window.location.search).get("connected") ===
-            "github-app"
-          )
+            data.user &&
+            (connected === "github" || connected === "github-app")
+          ) {
+            setPage("settings");
             setNotice(
-              "GitHub App connected. Browse your selected repositories to start a private Hull Check.",
+              "GitHub connected. Create a project to choose a repository, or manage access in Settings.",
             );
+          }
         }
       } catch (e) {
         if (active) setError((e as Error).message);
@@ -234,6 +239,7 @@ export function Dashboard() {
       await api("auth/logout", {});
       setWorkspace(null);
       setProjectId(null);
+      setNotice("");
       setModal("login");
     } catch (e) {
       setError((e as Error).message);
@@ -829,21 +835,25 @@ export function Dashboard() {
                       <div>
                         <h3>
                           <Github size={18} />
-                          GitHub connection
+                          Public repository browsing
                         </h3>
                         <p>
                           {workspace.github
                             ? "Connected as " + workspace.github
-                            : "Connect GitHub for repository selection and OAuth sign-in."}
+                            : "Connect GitHub to browse your public repositories."}
                         </p>
                         <small>
-                          This OAuth connection supports sign-in and public
-                          repository browsing. Connect the GitHub App below for
-                          private repository scans.
+                          You sign in to Shipwreck with email and password. This
+                          optional connection helps you choose public
+                          repositories. Use the GitHub App below for private
+                          repositories.
                         </small>
                       </div>
                       <button
                         className="button"
+                        disabled={
+                          !workspace.user.demo && !workspace.oauthConfigured
+                        }
                         onClick={() =>
                           workspace.user.demo
                             ? setModal("signup")
@@ -855,7 +865,11 @@ export function Dashboard() {
                               )
                         }
                       >
-                        {workspace.github ? "Reconnect" : "Connect GitHub"}
+                        {workspace.user.demo
+                          ? "Create an account"
+                          : workspace.github
+                            ? "Reconnect GitHub"
+                            : "Connect GitHub"}
                         <ArrowUpRight size={15} />
                       </button>
                     </div>
@@ -976,9 +990,14 @@ export function Dashboard() {
                 }
                 onSuccess={async () => {
                   await load();
-                  navigate("overview");
+                  navigate(modal === "signup" ? "settings" : "overview");
                   setModal(null);
-                  setNotice("Welcome aboard. Your workspace is ready.");
+                  setError("");
+                  setNotice(
+                    modal === "signup"
+                      ? "Your workspace is ready. Connect GitHub here, or create a project with a public repository."
+                      : "Welcome aboard. Your workspace is ready.",
+                  );
                 }}
               />
             )}

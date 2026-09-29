@@ -168,14 +168,9 @@ export function AuthForm({
       </h2>
       <p>
         {mode === "signup"
-          ? "Create your personal workspace and start checking what matters."
-          : "Sign in to your Shipwreck workspace."}
+          ? "Create your workspace with email and password. Connect GitHub afterward in Settings to choose your repositories."
+          : "Sign in with your Shipwreck email and password. Manage your GitHub connection in Settings."}
       </p>
-      <Link prefetch={false} className="button full" href="/api/auth/github">
-        <Github size={17} />
-        Continue with GitHub
-      </Link>
-      <div className="or-divider">or continue with email</div>
       <form onSubmit={submit}>
         {mode === "signup" && (
           <label>

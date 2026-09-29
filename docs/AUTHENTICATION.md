@@ -1,6 +1,6 @@
 # Authentication and protected routes
 
-Shipwreck already implements authentication through email/password and optional GitHub OAuth sign-in. Both establish the same database-backed session. A third-party authentication library is not required to enable the existing password provider. GitHub App authorization grants repository access after sign-in; it is separate from the OAuth sign-in provider.
+Shipwreck uses email/password for signup and sign-in. GitHub is an optional repository connection added afterward in Settings. Signup opens Settings, where users can connect GitHub or continue with a public repository. GitHub callbacks never create users or issue Shipwreck sessions. Each project selects its own repository; GitHub App installations can grant access to multiple selected repositories.
 
 ## Existing controls
 
@@ -14,24 +14,26 @@ These describe the implemented controls and tested behavior, not a claim that so
 
 ## API compatibility
 
-| Endpoint | Authentication behavior |
-| --- | --- |
-| `GET /api/health` | Public database readiness check |
-| `GET /api/workspace` | Anonymous bootstrap returns `{ user: null, demoEnabled }`; authenticated responses contain only that user's workspace |
-| Other catch-all API GET routes | Existing anonymous contract returns the same bootstrap response with no protected data |
-| `POST /api/auth/signup`, `/api/auth/login` | Public credential entry points with Origin checks and rate limits |
-| `POST /api/auth/demo` | Disabled in production unless explicitly enabled |
-| Project, scan, and GitHub connection mutations | Require a valid session; anonymous requests return 401 |
-| Cross-user scan/update | Return 404 |
-| Cross-user project delete | Returns the existing idempotent success response, but cannot delete the other user's project |
+| Endpoint                                       | Authentication behavior                                                                                               |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`                              | Public database readiness check                                                                                       |
+| `GET /api/workspace`                           | Anonymous bootstrap returns `{ user: null, demoEnabled }`; authenticated responses contain only that user's workspace |
+| Other catch-all API GET routes                 | Existing anonymous contract returns the same bootstrap response with no protected data                                |
+| `POST /api/auth/signup`, `/api/auth/login`     | Public credential entry points with Origin checks and rate limits                                                     |
+| `POST /api/auth/demo`                          | Disabled in production unless explicitly enabled                                                                      |
+| Project, scan, and GitHub connection mutations | Require a valid session; anonymous requests return 401                                                                |
+| Cross-user scan/update                         | Return 404                                                                                                            |
+| Cross-user project delete                      | Returns the existing idempotent success response, but cannot delete the other user's project                          |
 
-No authentication response shape, status code, session format, database schema, or tenant ownership logic was changed to resolve the scanner finding.
+The existing OAuth callback URL remains registered for compatibility, but it now only links repositories to an authenticated, non-demo account. Its encrypted state expires after ten minutes and is bound to the initiating account. Anonymous callbacks, changed accounts, invalid state, and attempts to link a GitHub identity owned by another workspace are rejected.
 
 ## Configuration
 
+Before deploying this change to an existing database, check for non-demo users with `password_hash IS NULL`. Older GitHub sign-in could create passwordless accounts with synthetic `@github.shipwreck.local` addresses. Those users need a separately verified email/password migration that preserves their user IDs and projects before this release; this change does not invent credentials, merge accounts, or provide a recovery flow. Existing email/password accounts and their linked repositories keep working.
+
 Password sign-in requires working persistent storage and production `APP_URL`. It does not require GitHub credentials. Azure F1 supplies `APP_URL` and `EMBEDDED_DATABASE_PATH`; other deployments can use `DATABASE_URL`.
 
-GitHub OAuth sign-in additionally requires `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and a 32-byte hex `TOKEN_ENCRYPTION_KEY`. These are server-only deployment settings. Azure currently has all four settings, including the HTTPS app URL; credential values were not printed during verification.
+Optional GitHub public-repository linking requires `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and a 32-byte hex `TOKEN_ENCRYPTION_KEY`. These are server-only deployment settings. Azure currently has all four settings, including the HTTPS app URL; credential values were not printed during verification.
 
 The OAuth App callback is:
 
@@ -41,7 +43,7 @@ https://shipwreck-free-daac2bd8ebe4.azurewebsites.net/api/auth/github/callback
 
 See [Azure deployment](AZURE_DEPLOYMENT.md) for the secure settings upload command. Keep existing `GITHUB_APP_*` settings in the same upload file to retain private-repository access. The deployment script retains Azure's app URL and encryption key; they do not need to be copied out of Azure. For local OAuth testing, configure a local `APP_URL`, an independent encryption key, and a callback registered for that local URL.
 
-Local regression tests use fake OAuth credentials and never contact GitHub. They verify redirect/state construction and rejected callbacks. They cannot establish that the registered callback, client secret, consent, token exchange, account linking, or repository permissions work at GitHub. Verify those with an interactive sign-in using the intended account. The OAuth implementation currently does not refresh expiring OAuth App tokens. GitHub App token refresh is a separate implementation with its own tests.
+Local regression tests use fake OAuth credentials and never contact GitHub. They verify redirect/state construction, rejected callbacks, and successful linking with a mocked GitHub token/profile response in the disposable server. They cannot establish that registered callbacks, client secrets, consent, or repository permissions work at GitHub. Verify those by signing in with email/password and connecting GitHub in Settings. The OAuth implementation currently does not refresh expiring OAuth App tokens. GitHub App token refresh is a separate implementation with its own tests.
 
 ## Scanner finding
 
@@ -63,4 +65,4 @@ npm run test:auth
 
 `test:auth` requires the production build. It starts a dedicated server on loopback port 3107 with demo disabled, a temporary database, a seeded expired session, and fake provider credentials. It refuses to reuse an existing server. The database is removed on server shutdown. It never uses the local or Azure database or `.env` provider credentials.
 
-The suite covers anonymous/forged/malformed/expired sessions, successful signup/login, rejected credentials, cookie attributes, logout replay, two-account project and scan-history isolation, Origin rejection, demo rejection, rate limiting, OAuth state generation and invalid/missing callback state. HTTPS Secure-cookie behavior and a successful remote OAuth exchange are not exercised by this local HTTP test server.
+The suite covers anonymous/forged/malformed/expired sessions, successful signup/login, rejected credentials, cookie attributes, logout replay, two-account project and scan-history isolation, Origin rejection, demo rejection, rate limiting, OAuth state generation, invalid/missing/tampered callback state, session changes during linking, successful mocked linking without replacing the session, and the email-first browser flow. HTTPS Secure-cookie behavior and a successful remote OAuth exchange are not exercised by this local HTTP test server.

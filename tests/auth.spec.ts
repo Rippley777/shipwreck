@@ -253,9 +253,30 @@ test("repeated invalid credentials are rate limited without issuing a session", 
   expect(response.headers()["set-cookie"]).toBeUndefined();
 });
 
-test("OAuth redirect carries state; missing/mismatched callback state creates no session", async ({
+test("GitHub cannot sign in or create an account anonymously", async ({
   request,
 }) => {
+  for (const url of [
+    "/api/auth/github",
+    "/api/auth/github/callback?code=test-link&state=fake",
+  ]) {
+    const response = await request.get(url, { maxRedirects: 0 });
+    expect(response.headers().location).toBe(
+      `${origin}/?error=create-account-first`,
+    );
+    expect(response.headers()["set-cookie"] || "").not.toContain(
+      "shipwreck_session=",
+    );
+    expect(
+      (await (await request.get("/api/workspace")).json()).user,
+    ).toBeNull();
+  }
+});
+
+test("OAuth linking carries state; missing/mismatched callback state preserves identity", async ({
+  request,
+}) => {
+  const { email } = await signup(request);
   const response = await request.get("/api/auth/github", { maxRedirects: 0 });
   const target = new URL(response.headers().location);
   expect(target.origin).toBe("https://github.com");
@@ -273,8 +294,155 @@ test("OAuth redirect carries state; missing/mismatched callback state creates no
     expect(callback.headers().location).toBe(
       `${origin}/?error=github-connection-failed`,
     );
-    expect(
-      (await (await request.get("/api/workspace")).json()).user,
-    ).toBeNull();
+    const workspace = await (await request.get("/api/workspace")).json();
+    expect(workspace.user.email).toBe(email);
+    expect(workspace.github).toBeNull();
   }
+});
+
+test("GitHub links to the signed-in workspace without replacing its session or password login", async ({
+  request,
+  playwright,
+}) => {
+  const { email, cookie } = await signup(request);
+  const before = await (await request.get("/api/workspace")).json();
+  const start = await request.get("/api/auth/github", { maxRedirects: 0 });
+  const state = new URL(start.headers().location).searchParams.get("state");
+  const callback = await request.get(
+    `/api/auth/github/callback?code=test-link&state=${state}`,
+    { maxRedirects: 0 },
+  );
+  expect(callback.headers().location).toBe(`${origin}/?connected=github`);
+  expect(callback.headers()["set-cookie"]).not.toContain("shipwreck_session=");
+  const after = await (await request.get("/api/workspace")).json();
+  expect(after.user).toEqual(before.user);
+  expect(after.github).toBe("test-captain");
+  const replay = await request.get(
+    `/api/auth/github/callback?code=test-link&state=${state}`,
+    { maxRedirects: 0 },
+  );
+  expect(replay.headers().location).toBe(
+    `${origin}/?error=github-connection-failed`,
+  );
+  const other = await playwright.request.newContext({ baseURL: origin });
+  try {
+    const { email: otherEmail } = await signup(other);
+    const attempt = await other.get("/api/auth/github", { maxRedirects: 0 });
+    const otherState = new URL(attempt.headers().location).searchParams.get(
+      "state",
+    );
+    const conflict = await other.get(
+      `/api/auth/github/callback?code=test-link&state=${otherState}`,
+      { maxRedirects: 0 },
+    );
+    expect(conflict.headers().location).toBe(
+      `${origin}/?error=github-connection-failed`,
+    );
+    const otherWorkspace = await (await other.get("/api/workspace")).json();
+    expect(otherWorkspace.user.email).toBe(otherEmail);
+    expect(otherWorkspace.github).toBeNull();
+  } finally {
+    await other.dispose();
+  }
+  expect(
+    (await request.storageState()).cookies.find(
+      (c) => c.name === "shipwreck_session",
+    )?.value,
+  ).toBe(cookie.split("=")[1]);
+  await request.post("/api/auth/logout", { headers, data: {} });
+  const login = await request.post("/api/auth/login", {
+    headers,
+    data: { email, password },
+  });
+  expect(login.status()).toBe(200);
+  expect((await (await request.get("/api/workspace")).json()).user.id).toBe(
+    before.user.id,
+  );
+});
+
+test("GitHub callback rejects logout, account switching, and tampered state", async ({
+  request,
+}) => {
+  await signup(request);
+  for (const change of ["logout", "switch", "tamper"]) {
+    const start = await request.get("/api/auth/github", { maxRedirects: 0 });
+    const state = new URL(start.headers().location).searchParams.get("state");
+    if (change === "logout")
+      await request.post("/api/auth/logout", { headers, data: {} });
+    if (change === "switch") await signup(request);
+    const callback = await request.get(
+      `/api/auth/github/callback?code=test-link&state=${state}`,
+      {
+        maxRedirects: 0,
+        ...(change === "tamper"
+          ? {
+              headers: {
+                Cookie: (await request.storageState()).cookies
+                  .map(
+                    (c) =>
+                      `${c.name}=${c.name === "github_state" ? "invalid" : c.value}`,
+                  )
+                  .join("; "),
+              },
+            }
+          : {}),
+      },
+    );
+    expect(callback.headers().location).toBe(
+      `${origin}/?error=${change === "logout" ? "create-account-first" : "github-connection-failed"}`,
+    );
+    const workspace = await (await request.get("/api/workspace")).json();
+    expect(workspace.github ?? null).toBeNull();
+    if (change === "logout") await signup(request);
+  }
+});
+
+test("email signup leads to optional GitHub settings; login contains no GitHub SSO", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Email", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("link", { name: /GitHub/ })).toHaveCount(0);
+  await dialog
+    .getByRole("button", { name: "New to Shipwreck? Create an account" })
+    .click();
+  await expect(
+    dialog.getByText(/Connect GitHub afterward in Settings/),
+  ).toBeVisible();
+  await expect(dialog.getByRole("link", { name: /GitHub/ })).toHaveCount(0);
+  const email = `${randomUUID()}@example.test`;
+  await dialog.getByLabel("Name", { exact: true }).fill("Email Captain");
+  await dialog.getByLabel("Email", { exact: true }).fill(email);
+  await dialog.getByLabel("Password", { exact: true }).fill(password);
+  await dialog
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Connect GitHub", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByLabel("Email", { exact: true })).toHaveValue(email);
+  await page.screenshot({
+    path: "artifacts/email-signup-settings.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page
+    .locator(".settings-panel")
+    .getByRole("button", { name: "Sign out", exact: true })
+    .click();
+  await expect(dialog.getByLabel("Email", { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: "artifacts/email-login.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await dialog.getByLabel("Email", { exact: true }).fill(email);
+  await dialog.getByLabel("Password", { exact: true }).fill(password);
+  await dialog.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Your first launch starts here" }),
+  ).toBeVisible();
 });

@@ -66,7 +66,11 @@ export async function GET(req: NextRequest) {
         user,
         projects: await workspace(user.id),
         github: connection[0]?.login ?? null,
-        oauthConfigured: !!process.env.GITHUB_CLIENT_ID,
+        oauthConfigured: !!(
+          process.env.GITHUB_CLIENT_ID &&
+          process.env.GITHUB_CLIENT_SECRET &&
+          process.env.TOKEN_ENCRYPTION_KEY
+        ),
         githubApp: await (async () => {
           const connection = await appConnection(user.id);
           return connection ? { login: connection.login } : null;

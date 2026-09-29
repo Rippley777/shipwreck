@@ -14,7 +14,7 @@ npm run dev
 
 Open **http://localhost:3000**. Development automatically opens a fresh, isolated demo workspace with three projects. No GitHub credentials, AI key, Docker, or external database are required. Embedded PostgreSQL persists in `.shipwreck/data`. Use a single application process when using embedded storage.
 
-To scan your own project, select **New project**, provide a public GitHub `owner/repository` and its branch, optionally add a public production URL, then run a Hull Check. Create an account to keep your own workspace separate from demo data. For private repositories, follow the [GitHub App setup guide](docs/GITHUB_APP_SETUP.md), connect the App in Settings, and select the repository from the connected picker. Public GitHub API calls are subject to GitHub's unauthenticated limits.
+To scan your own project, select **New project**, provide a public GitHub `owner/repository` and its branch, optionally add a public production URL, then run a Hull Check. Create an account with email and password to keep your own workspace separate from demo data. After signup, Settings lets you optionally connect GitHub; GitHub does not sign you in to Shipwreck. Each repository has its own project in your workspace. For private repositories, follow the [GitHub App setup guide](docs/GITHUB_APP_SETUP.md), connect the App in Settings, and select the repository from the connected picker. Public GitHub API calls are subject to GitHub's unauthenticated limits.
 
 ```sh
 npm run scan -- /path/to/local/repository
@@ -26,7 +26,7 @@ For pure JSON output use `npm run --silent scan -- /path --json`. The CLI exits 
 ## What is implemented
 
 - Signup, login, logout, salted scrypt passwords, hashed opaque session tokens, origin protection, rate limiting, and owner-scoped database access.
-- GitHub OAuth sign-in/connection, read-only GitHub App installations for private repositories, repository/branch selection, ingestion pinned to an immutable commit, and safe production URL inspection. App tokens refresh automatically, and each private scan uses a temporary token restricted to its repository.
+- Email/password sign-in with optional GitHub repository connections, read-only GitHub App installations for private repositories, repository/branch selection, ingestion pinned to an immutable commit, and safe production URL inspection. App tokens refresh automatically, and each private scan uses a temporary token restricted to its repository.
 - 32 independent deterministic checks with severity, confidence, evidence, explanation and remediation.
 - Dashboard, project reports, category/status filters, environment inventory, detected technology manifest, persistent scan history, previous report viewing, critical-count comparisons, and project settings/deletion.
 - Copyable coding-agent fix prompts; clipboard feedback, loading/error states, keyboard dismissal/focus management and responsive layouts.
@@ -40,7 +40,7 @@ See [architecture decisions](docs/ARCHITECTURE.md) and [database migration](migr
 ```text
 src/app/                      Next.js routes and styles
 src/app/api/[...path]/         Workspace, auth, projects, scans, health API
-src/app/api/auth/github/      OAuth authorization and callback
+src/app/api/auth/github/      Authenticated repository linking and callback
 src/app/api/github/app/       App authorization, installation setup and callback
 src/components/              Interactive dashboard and report UI
 src/lib/scanner/               Framework-independent checks, types and engine
@@ -122,7 +122,7 @@ The overview labels critical findings explicitly because this count includes bot
 | `POSTGRES_PASSWORD`           | Required only by Docker Compose                                                                                    |
 | `TEST_URL`                    | Optional URL for browser tests; defaults to `http://localhost:3000`                                                |
 
-Generate an encryption key with `openssl rand -hex 32`. Do not rotate it without first re-encrypting existing connection tokens or requiring users to reconnect. GitHub OAuth callback: `${APP_URL}/api/auth/github/callback`. Scope is deliberately limited to `read:user`; it does **not** grant private repository access. Private repository ingestion uses the separate GitHub App installation flow with read-only permissions. See [GitHub App setup](docs/GITHUB_APP_SETUP.md) for App credentials, callback/setup URLs, installation selection and token lifecycle.
+Generate an encryption key with `openssl rand -hex 32`. Do not rotate it without first re-encrypting existing connection tokens or requiring users to reconnect. GitHub OAuth repository-linking callback (requires a signed-in, non-demo Shipwreck account): `${APP_URL}/api/auth/github/callback`. Scope is deliberately limited to `read:user`; it does **not** grant private repository access. Private repository ingestion uses the separate GitHub App installation flow with read-only permissions. See [GitHub App setup](docs/GITHUB_APP_SETUP.md) for App credentials, callback/setup URLs, installation selection and token lifecycle.
 
 ## Demo and retention
 

@@ -39,7 +39,7 @@ Use these exact URLs in GitHub:
 - Homepage: `https://shipwreck-free-daac2bd8ebe4.azurewebsites.net`
 - Authorization callback: `https://shipwreck-free-daac2bd8ebe4.azurewebsites.net/api/github/app/callback`
 - Setup: `https://shipwreck-free-daac2bd8ebe4.azurewebsites.net/api/github/app/setup`
-- Optional separate OAuth App sign-in callback: `https://shipwreck-free-daac2bd8ebe4.azurewebsites.net/api/auth/github/callback`
+- Optional separate OAuth App repository-linking callback: `https://shipwreck-free-daac2bd8ebe4.azurewebsites.net/api/auth/github/callback`
 
 If you registered the earlier Container Apps hostname, replace its homepage, callback and setup URLs. Sign in again at the new host; cookies cannot transfer between hostnames. Existing account credentials are preserved.
 

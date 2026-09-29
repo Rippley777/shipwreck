@@ -56,6 +56,8 @@ await pg.close();
 const child = spawn(
   process.execPath,
   [
+    "--import",
+    path.resolve("scripts/auth-test-github.mjs"),
     "node_modules/next/dist/bin/next",
     "start",
     "--hostname",

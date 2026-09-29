@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
-import { currentUser } from "@/lib/server/auth";
+import { currentUser, encrypt } from "@/lib/server/auth";
 export async function GET(req: NextRequest) {
   const origin = process.env.APP_URL || req.nextUrl.origin;
+  const user = await currentUser();
+  if (!user || user.demo)
+    return NextResponse.redirect(
+      new URL("/?error=create-account-first", origin),
+    );
   if (
     !process.env.GITHUB_CLIENT_ID ||
     !process.env.GITHUB_CLIENT_SECRET ||
@@ -12,11 +17,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(
       new URL("/?error=github-not-configured", origin),
     );
-  const user = await currentUser();
   const state = randomBytes(32).toString("hex");
   (await cookies()).set(
     "github_state",
-    JSON.stringify({ state, userId: user?.id ?? null }),
+    encrypt(
+      JSON.stringify({
+        state,
+        userId: user.id,
+        expiresAt: Date.now() + 600000,
+      }),
+    ),
     {
       httpOnly: true,
       sameSite: "lax",

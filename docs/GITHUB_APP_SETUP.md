@@ -1,6 +1,6 @@
 # Private repositories with a GitHub App
 
-Shipwreck supports selected private repositories through a GitHub App. GitHub App access is independent of the existing OAuth App used for sign-in. A Shipwreck account with email/password is sufficient to connect the GitHub App.
+Shipwreck supports selected private repositories through a GitHub App. Sign in to Shipwreck with email/password, then connect the GitHub App in Settings. The optional OAuth App connection is only for public repository browsing; it is not needed for sign-in or GitHub App access.
 
 ## Register the App
 

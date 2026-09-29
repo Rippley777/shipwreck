@@ -92,7 +92,7 @@ test("account lifecycle, project settings/deletion, CSRF and tenant isolation", 
     .getByRole("button", { name: "Create account", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Your first launch starts here" }),
+    page.getByRole("heading", { name: "Public repository browsing" }),
   ).toBeVisible();
   const request = context.request;
   const response = await request.post("/api/projects", {
