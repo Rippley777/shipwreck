@@ -1,3 +1,4 @@
+import { HouseEdgeAnalytics } from "../components/house-edge-analytics";
 import type { Metadata } from "next";
 import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/manrope";
@@ -14,7 +15,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <HouseEdgeAnalytics />
+        {children}
+      </body>
     </html>
   );
 }

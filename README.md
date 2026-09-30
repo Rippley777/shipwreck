@@ -207,3 +207,15 @@ The PostgreSQL port is not published. The app image runs as a non-root user. The
 [MIT NON-AI License](LICENSE). This custom, source-available license permits use, modification, and redistribution subject to its terms, but **prohibits all AI/ML use of the code**, including training, inference, AI integrations, and supplying the code to AI coding tools, unless separately authorized in writing by the applicable copyright holder(s). It is not the standard MIT License or an OSI-approved open-source license.
 
 Third-party components and assets retain their own licenses. Previously granted licenses are not retroactively revoked. See the license file for the full terms.
+
+## House Edge analytics
+
+House Edge tracks page views, navigation, anonymous sessions, errors, and Web Vitals. The browser SDK is installed from `vendor/house-edge-analytics-0.1.1.tgz`, so this project can build independently of the House Edge repository or an npm registry publication. Commit the tarball with the dependency and lockfile.
+
+To activate it:
+
+1. Create a project in your House Edge dashboard with project key `shipwreck` (or override `NEXT_PUBLIC_HOUSE_EDGE_PROJECT`). Add this site's exact origin to its allowed origins, including the port for local testing.
+2. Set `NEXT_PUBLIC_HOUSE_EDGE_KEY` to that project's **browser ingestion key** and `NEXT_PUBLIC_HOUSE_EDGE_ENDPOINT` to your collector's full URL, such as `https://analytics.example.com/api/collect`. See `.env.example`. Use `.env.local` locally; configure your build environment when deploying.
+3. Rebuild and redeploy. These public values are embedded at build time. Visit the site and check House Edge's Live Activity for `page_view` and `session_start` after about five seconds.
+
+Tracking stays off when the key or endpoint is missing. Development tracking is off unless `NEXT_PUBLIC_HOUSE_EDGE_TRACK_DEVELOPMENT=true`; use a separate development project to avoid mixing test traffic into production. Do Not Track is respected. Only browser ingestion keys belong in these public variables.

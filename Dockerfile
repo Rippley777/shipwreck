@@ -1,8 +1,12 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
+COPY vendor ./vendor
 RUN npm ci
 COPY . .
+ARG NEXT_PUBLIC_HOUSE_EDGE_PROJECT
+ARG NEXT_PUBLIC_HOUSE_EDGE_KEY
+ARG NEXT_PUBLIC_HOUSE_EDGE_ENDPOINT
 RUN npm run build
 
 FROM node:22-bookworm-slim AS runtime

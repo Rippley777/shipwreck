@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.0",
+    "@house-edge/analytics": "file:vendor/house-edge-analytics-0.1.1.tgz",
     "ipaddr.js": "^2.2.0",
     "lucide-react": "^0.468.0",
     "next": "^16.0.0",
