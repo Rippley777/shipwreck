@@ -12,6 +12,8 @@ import {
 import { githubAppClient } from "@/lib/server/github-app-client";
 import { saveAppConnection } from "@/lib/server/github-app-connection";
 import { validateAppFlow, type AppFlow } from "@/lib/server/github-app-flow";
+import { GitHubAppError } from "./github-app-error";
+import type { GitHubAppFailureCode } from "../github-app-errors";
 const cookieName = "github_app_flow";
 async function storeFlow(
   userId: string,
@@ -61,6 +63,7 @@ export async function GET(req: NextRequest) {
   if (!githubAppConfigured()) return fail("github-app-not-configured");
   const user = await currentUser();
   if (!user || user.demo) return fail("github-app-sign-in");
+  let failure: GitHubAppFailureCode = "github-app-connection-failed";
   try {
     await rateLimit("github-app-flow:" + user.id, 40, 900);
     const action = req.nextUrl.pathname.split("/").at(-1);
@@ -78,6 +81,7 @@ export async function GET(req: NextRequest) {
     const jar = await cookies();
     const cookie = jar.get(cookieName)?.value;
     jar.delete({ name: cookieName, path: "/api/github/app" });
+    failure = "github-app-state-invalid";
     const flow = validateAppFlow(
       cookie,
       req.nextUrl.searchParams.get("state"),
@@ -88,22 +92,26 @@ export async function GET(req: NextRequest) {
       if (req.nextUrl.searchParams.get("setup_action") === "request")
         return fail("github-app-approval-pending");
       const installationId = req.nextUrl.searchParams.get("installation_id");
+      failure = "github-app-installation-access";
       if (!installationId || !/^[1-9]\d*$/.test(installationId))
         throw new Error("Missing installation.");
       // The installation ID is untrusted until the next callback checks it with a user token.
       return await authorize(user.id, origin, installationId);
     }
     const code = req.nextUrl.searchParams.get("code");
-    if (!code) throw new Error("GitHub App authorization was declined.");
+    if (!code) throw new GitHubAppError("github-app-authorization-denied");
+    failure = "github-app-token-failed";
     const token = await exchangeAppToken({
       code,
       code_verifier: flow.verifier!,
       redirect_uri: origin + "/api/github/app/callback",
     });
+    failure = "github-app-profile-failed";
     const profile = await github<{ id: number; login: string }>(
       "/user",
       token.access_token,
     );
+    failure = "github-app-installation-access";
     const installations = await githubAppClient.installations(
       token.access_token,
     );
@@ -114,11 +122,21 @@ export async function GET(req: NextRequest) {
       throw new Error(
         "This GitHub user cannot access the requested installation.",
       );
+    failure = "github-app-save-failed";
     await saveAppConnection(user.id, profile, token);
     if (!installations.length)
       return NextResponse.redirect(new URL("/api/github/app/install", origin));
     return NextResponse.redirect(new URL("/?connected=github-app", origin));
-  } catch {
-    return fail("github-app-connection-failed");
+  } catch (error) {
+    const reason =
+      error instanceof GitHubAppError
+        ? error.reason
+        : error instanceof Error &&
+            error.message === "Too many requests. Please try again later."
+          ? "github-app-rate-limited"
+          : failure;
+    // Log only our fixed reason codes, never provider payloads, cookies, or codes.
+    console.error("GitHub App connection failed", { reason });
+    return fail(reason);
   }
 }

@@ -7,6 +7,7 @@ import {
   type AppOAuthToken,
 } from "./github-app-config";
 import { githubAppClient } from "./github-app-client";
+import { GitHubAppError } from "./github-app-error";
 export type AppConnection = {
   user_id: string;
   app_id: string;
@@ -47,17 +48,12 @@ export async function saveAppConnection(
     linked.length ||
     (owner[0]?.github_id && owner[0].github_id !== String(profile.id))
   )
-    throw new Error(
-      "Connect the GitHub account already linked to your Shipwreck account.",
-    );
+    throw new GitHubAppError("github-app-account-mismatch");
   const updated = await query(
     "UPDATE users SET github_id=$1 WHERE id=$2 AND (github_id IS NULL OR github_id=$1) RETURNING id",
     [String(profile.id), userId],
   );
-  if (!updated.length)
-    throw new Error(
-      "The GitHub account linked to this workspace changed. Try reconnecting.",
-    );
+  if (!updated.length) throw new GitHubAppError("github-app-account-mismatch");
   await query(
     `INSERT INTO github_app_connections(user_id,app_id,github_user_id,login,encrypted_token,encrypted_refresh_token,expires_at,refresh_expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(user_id) DO UPDATE SET app_id=$2,github_user_id=$3,login=$4,encrypted_token=$5,encrypted_refresh_token=$6,expires_at=$7,refresh_expires_at=$8,refresh_lock_token=NULL,refresh_lock_until=NULL,connected_at=NOW()`,
     [

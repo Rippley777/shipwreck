@@ -109,7 +109,7 @@ The overview labels critical findings explicitly because this count includes bot
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`                | PostgreSQL connection string; omit for local embedded PostgreSQL                                               |
 | `APP_URL`                     | Canonical application origin, e.g. `https://shipwreck.example.com`; used for OAuth and accepted for API writes |
-| `ALLOWED_ORIGINS`             | Optional comma-separated extra HTTP(S) origins allowed to make API write requests                              |
+| `ALLOWED_ORIGINS`             | Optional extra HTTP(S) origins accepted by the API POST Origin check; does not enable CORS                              |
 | `TOKEN_ENCRYPTION_KEY`        | 64 hex characters (32 random bytes), required for OAuth tokens                                                 |
 | `GITHUB_CLIENT_ID`            | GitHub OAuth App client ID                                                                                     |
 | `GITHUB_APP_ID`               | Numeric GitHub App ID for private repository access                                                            |
@@ -158,11 +158,11 @@ The authentication suite starts an isolated production-mode server with disposab
 
 ## Deployment
 
-For Azure, use the **F1 Free** App Service deployment in the [Azure deployment guide](docs/AZURE_DEPLOYMENT.md). It provides a stable HTTPS URL and persistent embedded PostgreSQL for a single application process, with hard free-tier quotas and no paid fallback.
+For Azure, use the **F1 Free** App Service deployment in the [Azure deployment guide](docs/AZURE_DEPLOYMENT.md). From `shipwreck/`, run `az login`, select the subscription with `az account set --subscription <subscription-id>`, preview with `npm run deploy -- --dry-run`, then run `npm run deploy`. The script checks prerequisites, builds and uploads the app, and checks database health. Use `--settings-only` for configuration changes without rebuilding. It provides a stable HTTPS URL and persistent embedded PostgreSQL for a single application process, with hard free-tier quotas and no paid fallback.
 
 For another provider, use a persistent Node.js service with managed PostgreSQL or the included Compose setup.
 
-1. Set `DATABASE_URL`, `APP_URL`, and optional GitHub OAuth credentials in your deployment secret store. Use HTTPS for `APP_URL` and a PostgreSQL connection with provider-supported TLS verification. Keep `ENABLE_DEMO=false` for a normal production install.
+1. Set `DATABASE_URL`, `APP_URL`, `ALLOWED_ORIGINS` if needed, and optional GitHub OAuth credentials in your deployment secret store. Use HTTPS for `APP_URL` and a PostgreSQL connection with provider-supported TLS verification. Keep `ENABLE_DEMO=false` for a normal production install.
 2. Run `npm ci`, `npm run build`, then `npm start`. The schema is created on first storage use. Restrict the runtime database role after applying migrations if required by your deployment policy.
 3. Put a TLS reverse proxy in front of port 3000. Use `/api/health` for readiness; it checks database connectivity.
 4. Allow outbound HTTPS to GitHub and DNS/public HTTP(S) targets for scans. Block private network egress at the infrastructure layer too.
@@ -201,3 +201,9 @@ The PostgreSQL port is not published. The app image runs as a non-root user. The
 8. Scan comparison by stable finding identity, new/fixed/regressed filters and policy gates.
 9. CLI packaging and GitHub Action/PR annotations with scoped access.
 10. Email verification/password recovery, alert delivery, recurring scans and plan enforcement.
+
+## License
+
+[MIT NON-AI License](LICENSE). This custom, source-available license permits use, modification, and redistribution subject to its terms, but **prohibits all AI/ML use of the code**, including training, inference, AI integrations, and supplying the code to AI coding tools, unless separately authorized in writing by the applicable copyright holder(s). It is not the standard MIT License or an OSI-approved open-source license.
+
+Third-party components and assets retain their own licenses. Previously granted licenses are not retroactively revoked. See the license file for the full terms.

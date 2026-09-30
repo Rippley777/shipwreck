@@ -82,6 +82,9 @@ The user-token intersection is described in [GitHub's user access token document
 - **App is not configured:** provide all App credentials, an encryption key, and either the PEM value or private-key path.
 - **Organization approval pending:** an administrator must approve the installation. Reconnect after approval.
 - **Connection failed:** check exact callback/setup origins, ensure the expected GitHub account is used, and restart expired authorization flows from Settings. If your organization uses SAML SSO, authorize with an active organization SAML session.
+- **Expired or missing browser state:** start a fresh connection from Settings on the canonical `APP_URL` and finish in the same browser tab. Keep **Request user authorization (OAuth) during installation** unchecked so installation returns through the setup flow Shipwreck started.
+- **Client credentials or callback rejected:** check the GitHub App registration and deployed `GITHUB_APP_CLIENT_ID`/`GITHUB_APP_CLIENT_SECRET`. The separate public-repository OAuth App uses different credentials and a different callback path.
+- **Account conflict:** use the GitHub identity already linked to this Shipwreck workspace. Connecting an identity owned by another Shipwreck account does not move that account's data or connection.
 - **Repository unavailable:** verify the App is installed on that repository and your GitHub account still has repository access. Suspended installations and revoked grants deliberately stop scans.
 - **Authorization being refreshed:** another request holds the refresh lease; retry in a moment. Failed refreshes release the lease; a crashed worker's lease expires after 45 seconds.
 - **Expired refresh authorization:** reconnect the App. Encryption-key rotation also requires re-encrypting stored tokens or disconnecting/reconnecting.
@@ -90,4 +93,6 @@ The user-token intersection is described in [GitHub's user access token document
 
 Automated tests exercise JWT signing, PKCE, encrypted callback state, account boundaries, forged/suspended/wrong-App installations, revoked access, repository-scoped token issuance, failed-ingestion revocation, pagination, refresh rotation/concurrency, disconnect races, and the idempotent schema upgrade. A browser test exercises private repository selection, installation-aware branches and project creation, installation listing, and disconnect.
 
-GitHub provider responses in these tests are simulated. A live private repository authorization/scan requires operator-provided App credentials and installation access, which are not present in this workspace.
+Authentication integration tests also exercise successful App connection, callback replay, changed browser state/accounts, installation setup and reauthorization, provider errors, and identity conflicts.
+
+GitHub provider responses in these tests are simulated. Live authorization requires an operator to approve the GitHub flow; automated tests do not verify that consent. Failed callbacks return specific error codes and log only those fixed reason codes, without cookies, authorization codes, tokens, or provider response bodies.

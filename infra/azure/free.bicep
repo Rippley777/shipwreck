@@ -1,6 +1,7 @@
 param location string = resourceGroup().location
 param appName string
 param appUrl string = 'https://${appName}.azurewebsites.net'
+param allowedOrigins string = ''
 @secure()
 param encryptionKey string
 @secure()
@@ -28,6 +29,7 @@ resource app 'Microsoft.Web/sites@2024-04-01' = {
       minTlsVersion: '1.2'
       appSettings: concat([
         { name: 'APP_URL', value: appUrl }
+        { name: 'ALLOWED_ORIGINS', value: allowedOrigins }
         { name: 'NODE_ENV', value: 'production' }
         { name: 'HOSTNAME', value: '0.0.0.0' }
         { name: 'ENABLE_DEMO', value: 'false' }

@@ -6,6 +6,7 @@ services:
     environment:
       DATABASE_URL: postgresql://shipwreck:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@database:5432/shipwreck
       APP_URL: ${APP_URL:-http://localhost:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       ENABLE_DEMO: ${ENABLE_DEMO:-false}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}

@@ -43,6 +43,7 @@ import { Findings, HistoryList } from "./reports";
 import { NewProject, AuthForm, ProjectSettings } from "./forms";
 import { api, ago, type Modal } from "@/lib/client";
 import { fixPrompt } from "@/lib/scanner/prompt";
+import { githubAppErrors } from "@/lib/github-app-errors";
 type Workspace = {
   user: { name: string; email: string; demo: boolean };
   projects: Project[];
@@ -89,6 +90,7 @@ export function Dashboard() {
           );
           if (reason) {
             const messages: Record<string, string> = {
+              ...githubAppErrors,
               "github-not-configured":
                 "Configure GitHub OAuth environment variables to connect your account.",
               "create-account-first":
@@ -99,8 +101,6 @@ export function Dashboard() {
                 "Sign in to a personal account before connecting the GitHub App.",
               "github-app-approval-pending":
                 "GitHub App installation is awaiting organization administrator approval. Connect again once approved.",
-              "github-app-connection-failed":
-                "GitHub App connection failed. Use the GitHub account linked to Shipwreck, confirm installation access, and try again.",
             };
             setError(
               messages[reason] || "GitHub connection failed. Please try again.",

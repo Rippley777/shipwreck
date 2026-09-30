@@ -1,6 +1,8 @@
 import { createHash, randomBytes, sign } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
+import { GitHubAppError } from "./github-app-error";
+import type { GitHubAppFailureCode } from "../github-app-errors";
 export function githubAppConfigured() {
   return !!(
     process.env.GITHUB_APP_ID &&
@@ -89,14 +91,23 @@ export async function exchangeAppToken(
     signal: AbortSignal.timeout(15000),
     cache: "no-store",
   });
-  const parsed = appTokenSchema.safeParse(await response.json());
-  if (!response.ok || !parsed.success)
-    throw new Error(
-      "GitHub App authorization could not be renewed. Reconnect the GitHub App.",
-    );
+  const body = await response.json();
+  const parsed = appTokenSchema.safeParse(body);
+  if (!response.ok || !parsed.success) {
+    const reasons: Record<string, GitHubAppFailureCode> = {
+      incorrect_client_credentials: "github-app-client-credentials",
+      redirect_uri_mismatch: "github-app-redirect-mismatch",
+      bad_verification_code: "github-app-code-expired",
+      unverified_user_email: "github-app-email-unverified",
+      access_denied: "github-app-authorization-denied",
+    };
+    const reason =
+      typeof body?.error === "string" && Object.hasOwn(reasons, body.error)
+        ? reasons[body.error]
+        : undefined;
+    throw new GitHubAppError(reason || "github-app-token-failed");
+  }
   if (parsed.data.expires_in && !parsed.data.refresh_token)
-    throw new Error(
-      "GitHub returned an expiring token without a refresh token. Reconnect the GitHub App.",
-    );
+    throw new GitHubAppError("github-app-token-failed");
   return parsed.data;
 }

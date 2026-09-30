@@ -39,10 +39,10 @@ Optional GitHub public-repository linking requires `GITHUB_CLIENT_ID`, `GITHUB_C
 The OAuth App callback is:
 
 ```text
-https://shipwreck-free-daac2bd8ebe4.azurewebsites.net/api/auth/github/callback
+https://shipwreck.oddware.dev/api/auth/github/callback
 ```
 
-See [Azure deployment](AZURE_DEPLOYMENT.md) for the secure settings upload command. Keep existing `GITHUB_APP_*` settings in the same upload file to retain private-repository access. The deployment script retains Azure's app URL and encryption key; they do not need to be copied out of Azure. For local OAuth testing, configure a local `APP_URL`, an independent encryption key, and a callback registered for that local URL.
+See [Azure deployment](AZURE_DEPLOYMENT.md) for the secure settings upload command. Keep existing `GITHUB_APP_*` settings in the same upload file to retain private-repository access. The deployment script retains the saved canonical URL and encryption key; they do not need to be copied out of Azure. For local OAuth testing, configure a local `APP_URL`, an independent encryption key, and a callback registered for that local URL.
 
 Local regression tests use fake OAuth credentials and never contact GitHub. They verify redirect/state construction, rejected callbacks, and successful linking with a mocked GitHub token/profile response in the disposable server. They cannot establish that registered callbacks, client secrets, consent, or repository permissions work at GitHub. Verify those by signing in with email/password and connecting GitHub in Settings. The OAuth implementation currently does not refresh expiring OAuth App tokens. GitHub App token refresh is a separate implementation with its own tests.
 

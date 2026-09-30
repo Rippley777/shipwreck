@@ -14,6 +14,7 @@ import base64
 import urllib.request
 import urllib.parse
 import urllib.error
+from urllib.parse import urlsplit
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +23,39 @@ spec = importlib.util.spec_from_file_location('azure_helpers', ROOT / 'scripts/d
 helpers = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(helpers)
 run = helpers.run
+
+
+def allowed_origins(value):
+    origins = []
+    for item in value.split(','):
+        item = item.strip()
+        if not item:
+            continue
+        url = urlsplit(item)
+        try:
+            url.port
+        except ValueError as error:
+            raise ValueError('Allowed origins must use valid ports.') from error
+        if (url.scheme not in ('http', 'https') or not url.hostname or
+                url.username or url.password or url.path not in ('', '/') or
+                url.query or url.fragment or item.rstrip('/') !=
+                f'{url.scheme}://{url.netloc}'):
+            raise ValueError('Use comma-separated HTTP(S) origins without paths or credentials.')
+        origins.append(f'{url.scheme}://{url.netloc}')
+    return ','.join(dict.fromkeys(origins))
+
+
+def app_url(value):
+    url = urlsplit(value)
+    try:
+        url.port
+    except ValueError as error:
+        raise ValueError('APP_URL must use a valid HTTPS port.') from error
+    if (url.scheme != 'https' or not url.hostname or url.username or url.password or
+            url.path not in ('', '/') or url.query or url.fragment or
+            value.rstrip('/') != f'{url.scheme}://{url.netloc}'):
+        raise ValueError('APP_URL must be an HTTPS origin already bound to this App Service.')
+    return f'{url.scheme}://{url.netloc}'
 
 
 def wait_for_deployment(state):
@@ -45,13 +79,21 @@ def wait_for_deployment(state):
         time.sleep(10)
     else:
         raise ValueError('Azure package installation did not finish within the deployment timeout.')
+    wait_for_health(state)
+
+
+def wait_for_health(state):
     for _ in range(45):
         try:
-            with urllib.request.urlopen(state['appUrl'] + '/api/health', timeout=20) as response:
-                if json.load(response) == {'status': 'ok'}:
+            request = urllib.request.Request(state['appUrl'] + '/api/health',
+                                             headers={'User-Agent': 'Shipwreck-Deploy/1.0'})
+            with urllib.request.urlopen(request, timeout=20) as response:
+                if (urllib.parse.urlparse(response.url).netloc ==
+                        urllib.parse.urlparse(state['appUrl']).netloc and
+                        json.load(response) == {'status': 'ok'}):
                     print('HTTPS and database health passed.', flush=True)
                     return
-        except (urllib.error.URLError, TimeoutError):
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
             pass
         time.sleep(5)
     raise ValueError('The deployed app did not pass its database health check.')
@@ -73,6 +115,8 @@ def main():
     parser.add_argument('--github-env', type=Path)
     parser.add_argument('--local-image', help='Existing Linux AMD64 image containing standalone output')
     parser.add_argument('--settings-only', action='store_true')
+    parser.add_argument('--allowed-origins', help='Extra comma-separated origins accepted by the API POST Origin check')
+    parser.add_argument('--app-url', help='Canonical HTTPS origin already bound to this App Service')
     args = parser.parse_args()
     account = json.loads(run(['az', 'account', 'show', '-o', 'json'], True))
     if STATE.exists():
@@ -91,19 +135,40 @@ def main():
     if args.github_env:
         state['githubConfiguration'] = helpers.github_env(args.github_env.expanduser().resolve())
         save(state)
+    if args.allowed_origins is not None:
+        state['allowedOrigins'] = allowed_origins(args.allowed_origins)
+        save(state)
+    if args.app_url:
+        canonical = app_url(args.app_url)
+        # Check the domain before changing the app's canonical URL in Azure.
+        try:
+            request = urllib.request.Request(canonical + '/api/health',
+                                             headers={'User-Agent': 'Shipwreck-Deploy/1.0'})
+            with urllib.request.urlopen(request, timeout=20) as response:
+                if (urllib.parse.urlparse(response.url).netloc !=
+                        urllib.parse.urlparse(canonical).netloc or
+                        json.load(response) != {'status': 'ok'}):
+                    raise ValueError('The custom domain does not serve this app health endpoint.')
+        except (urllib.error.URLError, TimeoutError) as error:
+            raise ValueError('Bind the custom domain with HTTPS before setting APP_URL.') from error
+        state['appUrl'] = canonical
+        save(state)
     print('Deploying Azure App Service F1 Free; no paid fallback.', flush=True)
     run(['az', 'group', 'create', '-g', state['resourceGroup'], '-l', state['location'], '-o', 'none'])
     outputs = helpers.deployment(state['resourceGroup'], 'shipwreck-free', 'infra/azure/free.bicep',
                                  {'location': state['location'], 'appName': state['appName'],
                                   'appUrl': state.get('appUrl', 'https://' + state['appName'] + '.azurewebsites.net'),
+                                  'allowedOrigins': state.get('allowedOrigins', ''),
                                   'encryptionKey': state['encryptionKey'],
                                   'githubConfiguration': state['githubConfiguration']})
-    state['appUrl'] = outputs['appUrl']
+    state['azureUrl'] = outputs['appUrl']
+    state['appUrl'] = state.get('appUrl', outputs['appUrl'])
     save(state)
     # Avoid emitting app settings, which include credentials.
     with tempfile.TemporaryDirectory() as temporary:
         settings = Path(temporary) / 'settings.json'
-        settings.write_text(json.dumps({'APP_URL': state['appUrl']}))
+        settings.write_text(json.dumps({'APP_URL': state['appUrl'],
+                                        'ALLOWED_ORIGINS': state.get('allowedOrigins', '')}))
         settings.chmod(0o600)
         run(['az', 'webapp', 'config', 'appsettings', 'set', '-g', state['resourceGroup'],
              '-n', state['appName'], '--settings', '@' + str(settings), '-o', 'none'])
@@ -166,6 +231,8 @@ def main():
             run(['az', 'webapp', 'deploy', '-g', state['resourceGroup'], '-n', state['appName'],
                  '--src-path', str(archive), '--type', 'zip', '--clean', 'true', '--async', 'true', '-o', 'none'])
             wait_for_deployment(state)
+    else:
+        wait_for_health(state)
     print('APP_URL=' + state['appUrl'])
     print('Persistent embedded storage: /home/shipwreck/data')
     print('F1 hard quotas apply; there is no automatic paid upgrade.')

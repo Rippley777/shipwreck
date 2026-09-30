@@ -397,6 +397,204 @@ test("GitHub callback rejects logout, account switching, and tampered state", as
   }
 });
 
+test("GitHub App authorization saves the connection and preserves the Shipwreck session", async ({
+  request,
+}) => {
+  const { cookie } = await signup(request);
+  const before = await (await request.get("/api/workspace")).json();
+  const start = await request.get("/api/github/app/connect", {
+    maxRedirects: 0,
+  });
+  const target = new URL(start.headers().location);
+  expect(target.origin).toBe("https://github.com");
+  expect(target.searchParams.get("client_id")).toBe("test-app-client");
+  expect(target.searchParams.get("redirect_uri")).toBe(
+    `${origin}/api/github/app/callback`,
+  );
+  expect(target.searchParams.get("code_challenge_method")).toBe("S256");
+  expect(target.searchParams.get("code_challenge")).toMatch(/^[\w-]{43}$/);
+  const callbackPath = `/api/github/app/callback?code=test-app-link&state=${target.searchParams.get("state")}`;
+  const callback = await request.get(callbackPath, { maxRedirects: 0 });
+  expect(callback.headers().location).toBe(`${origin}/?connected=github-app`);
+  const after = await (await request.get("/api/workspace")).json();
+  expect(after.user).toEqual(before.user);
+  expect(after.githubApp).toEqual({ login: "app-captain" });
+  expect(
+    (await request.storageState()).cookies.find(
+      (c) => c.name === "shipwreck_session",
+    )?.value,
+  ).toBe(cookie.split("=")[1]);
+  const replay = await request.get(callbackPath, { maxRedirects: 0 });
+  expect(replay.headers().location).toBe(
+    `${origin}/?error=github-app-state-invalid`,
+  );
+});
+
+test("GitHub App rejects missing, tampered, mismatched, and switched-account callback state", async ({
+  request,
+}) => {
+  await signup(request);
+  const missing = await request.get(
+    "/api/github/app/callback?code=test-app-link",
+    { maxRedirects: 0 },
+  );
+  expect(missing.headers().location).toBe(
+    `${origin}/?error=github-app-state-invalid`,
+  );
+  for (const change of ["state", "cookie", "account"]) {
+    const start = await request.get("/api/github/app/connect", {
+      maxRedirects: 0,
+    });
+    let state = new URL(start.headers().location).searchParams.get("state");
+    if (change === "state") state = "wrong";
+    if (change === "account") await signup(request);
+    const response = await request.get(
+      `/api/github/app/callback?code=test-app-link&state=${state}`,
+      {
+        maxRedirects: 0,
+        ...(change === "cookie"
+          ? {
+              headers: {
+                Cookie: (await request.storageState()).cookies
+                  .map(
+                    (c) =>
+                      `${c.name}=${c.name === "github_app_flow" ? "invalid" : c.value}`,
+                  )
+                  .join("; "),
+              },
+            }
+          : {}),
+      },
+    );
+    expect(response.headers().location).toBe(
+      `${origin}/?error=github-app-state-invalid`,
+    );
+    expect(
+      (await (await request.get("/api/workspace")).json()).githubApp,
+    ).toBeNull();
+  }
+});
+
+test("GitHub App callback reports provider failures without exposing provider responses", async ({
+  request,
+}) => {
+  await signup(request);
+  for (const [code, reason] of [
+    ["test-app-bad-client", "github-app-client-credentials"],
+    ["test-app-bad-redirect", "github-app-redirect-mismatch"],
+    ["test-app-bad-code", "github-app-code-expired"],
+    ["test-app-email", "github-app-email-unverified"],
+    ["test-app-unknown-error", "github-app-token-failed"],
+  ]) {
+    const start = await request.get("/api/github/app/connect", {
+      maxRedirects: 0,
+    });
+    const state = new URL(start.headers().location).searchParams.get("state");
+    const response = await request.get(
+      `/api/github/app/callback?code=${code}&state=${state}`,
+      { maxRedirects: 0 },
+    );
+    expect(response.headers().location).toBe(`${origin}/?error=${reason}`);
+    expect(await response.text()).not.toContain(
+      "provider-secret-must-not-be-exposed",
+    );
+    expect(
+      (await (await request.get("/api/workspace")).json()).githubApp,
+    ).toBeNull();
+  }
+});
+
+test("GitHub App installation returns through setup and verifies the user's installation access", async ({
+  request,
+}) => {
+  await signup(request);
+  const start = await request.get("/api/github/app/connect", {
+    maxRedirects: 0,
+  });
+  const state = new URL(start.headers().location).searchParams.get("state");
+  const initial = await request.get(
+    `/api/github/app/callback?code=test-app-install&state=${state}`,
+    { maxRedirects: 0 },
+  );
+  expect(initial.headers().location).toBe(`${origin}/api/github/app/install`);
+  const install = await request.get("/api/github/app/install", {
+    maxRedirects: 0,
+  });
+  const installUrl = new URL(install.headers().location);
+  expect(installUrl.origin + installUrl.pathname).toBe(
+    "https://github.com/apps/shipwreck-test/installations/new",
+  );
+  const setup = await request.get(
+    `/api/github/app/setup?installation_id=123&setup_action=install&state=${installUrl.searchParams.get("state")}`,
+    { maxRedirects: 0 },
+  );
+  const authorization = new URL(setup.headers().location);
+  expect(authorization.origin).toBe("https://github.com");
+  const callback = await request.get(
+    `/api/github/app/callback?code=test-app-installed&state=${authorization.searchParams.get("state")}`,
+    { maxRedirects: 0 },
+  );
+  expect(callback.headers().location).toBe(`${origin}/?connected=github-app`);
+  expect(
+    (await (await request.get("/api/workspace")).json()).githubApp,
+  ).toEqual({ login: "install-captain" });
+
+  const restart = await request.get("/api/github/app/install", {
+    maxRedirects: 0,
+  });
+  const forged = await request.get(
+    `/api/github/app/setup?installation_id=999&state=${new URL(restart.headers().location).searchParams.get("state")}`,
+    { maxRedirects: 0 },
+  );
+  const rejected = await request.get(
+    `/api/github/app/callback?code=test-app-installed&state=${new URL(forged.headers().location).searchParams.get("state")}`,
+    { maxRedirects: 0 },
+  );
+  expect(rejected.headers().location).toBe(
+    `${origin}/?error=github-app-installation-access`,
+  );
+});
+
+test("GitHub App account conflict does not overwrite another workspace's connection", async ({
+  request,
+  playwright,
+}) => {
+  await signup(request);
+  const start = await request.get("/api/github/app/connect", {
+    maxRedirects: 0,
+  });
+  const state = new URL(start.headers().location).searchParams.get("state");
+  const connected = await request.get(
+    `/api/github/app/callback?code=test-app-conflict&state=${state}`,
+    { maxRedirects: 0 },
+  );
+  expect(connected.headers().location).toBe(`${origin}/?connected=github-app`);
+  const owner = await (await request.get("/api/workspace")).json();
+  const other = await playwright.request.newContext({ baseURL: origin });
+  try {
+    await signup(other);
+    const before = await (await other.get("/api/workspace")).json();
+    const attempt = await other.get("/api/github/app/connect", {
+      maxRedirects: 0,
+    });
+    const response = await other.get(
+      `/api/github/app/callback?code=test-app-conflict&state=${new URL(attempt.headers().location).searchParams.get("state")}`,
+      { maxRedirects: 0 },
+    );
+    expect(response.headers().location).toBe(
+      `${origin}/?error=github-app-account-mismatch`,
+    );
+    const after = await (await other.get("/api/workspace")).json();
+    expect(after.user).toEqual(before.user);
+    expect(after.githubApp).toBeNull();
+    expect(
+      (await (await request.get("/api/workspace")).json()).githubApp,
+    ).toEqual(owner.githubApp);
+  } finally {
+    await other.dispose();
+  }
+});
+
 test("email signup leads to optional GitHub settings; login contains no GitHub SSO", async ({
   page,
 }) => {
